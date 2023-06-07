@@ -1,0 +1,12 @@
+bluesky
+databroker
+ophyd
+suitcase-msgpack
+qtpy
+pyqt5
+bluesky-widgets
+pyepics
+matplotlib
+matplotlib-inline
+numpy
+requests
