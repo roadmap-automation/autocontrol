@@ -1,17 +1,13 @@
 import sys
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
-from bluesky.utils import install_kicker, ProgressBarManager
+from bluesky.utils import ProgressBarManager
 from bluesky.plans import count
 
 from databroker import Broker
 
 # from ophyd.sim import det1, det2  # two simulated detectors
 from QCMD_device import open_QCMD
-
-from bluesky_widgets.examples.utils.generate_msgpack_data import get_catalog
-from bluesky_widgets.examples.qt_run_tree_view import RunTree
-
 
 if __name__ == "__main__":
     RE = RunEngine({})

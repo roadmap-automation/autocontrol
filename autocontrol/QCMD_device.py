@@ -67,6 +67,14 @@ class QCMDSignal(Signal):
             res[k]["precision"] = self.precision
         return res
 
+    def stop(self):
+        """
+        Stop function in case of Device failure
+
+        :return: no return value
+        """
+        self.qcmd_stop()
+
     def trigger(self):
         st = DeviceStatus(device=self)
 
@@ -80,11 +88,26 @@ class QCMDSignal(Signal):
         delay_time = self.exposure_time
         if delay_time:
             def sleep_and_finish():
-                self.log.debug("sleep_and_finish %s", self)
+                # start QCMD and check for success
+                start_status = ''
                 self.qcmd_start()
-                ttime.sleep(delay_time)
-                self.put(self._func())
-                self.qcmd_stop()
+                for _ in range(10):
+                    start_status = self.qcmd_status()
+                    if start_status == 'measuring':
+                        break
+                    else:
+                        self.log.debug("Waiting for QCM-D to start measurement, %s", self)
+                        print("Waiting for QCM-D to start measurement ...")
+                    ttime.sleep(5)
+                if start_status == 'measuring':
+                    self.log.debug("sleep_and_finish %s", self)
+                    print("Started QCM-D measurement.")
+                    ttime.sleep(delay_time)
+                    self.put(self._func())
+                    self.qcmd_stop()
+                else:
+                    self.log.debug("Failed to start QCM-D, %s", self)
+                    print("Failed to start QCM-D.")
                 st.set_finished()
 
             threading.Thread(target=sleep_and_finish, daemon=True).start()
@@ -92,6 +115,30 @@ class QCMDSignal(Signal):
             self.put(self._func())
             st.set_finished()
         return st
+
+    def qcmd_communicate(self, command, value=0):
+        """
+        Communicate with QCM-D instrument and return response.
+
+        :param command: HTTP POST request command field
+        :param value: HTTP POST request value field
+        :return: response from HTTP POST or None if failed
+        """
+        if self.address is None:
+            return None
+
+        cmdstr = '{"command": "' + str(command) + '", "value": ' + str(value) + '}'
+        try:
+            r = requests.post(self.address, cmdstr)
+        except requests.exceptions.RequestException:
+            return None
+
+        if r.status_code != 200:
+            return None
+
+        rdict = json.loads(r.text)
+        response = rdict['result']
+        return response
 
     def qcmd_read(self):
         """
@@ -111,13 +158,7 @@ class QCMDSignal(Signal):
         # single frequency dummy data for null returns since None does not seem to be an option for bluesky
         dvalue = [0., [0.], [[0., 0., 0., 0.]], [[0., 0., 0., 0.]], [0.]]
 
-        if self.address is None:
-            return dvalue
-        cmdstr = '{"command": "get_data", "value": 0}'
-        r = requests.post(self.address, cmdstr)
-        rdict = json.loads(r.text)
-        rrdict = rdict['result']
-
+        rrdict = self.qcmd_communicate("get_data")
         if rrdict is None:
             rvalue = dvalue
         else:
@@ -141,10 +182,7 @@ class QCMDSignal(Signal):
 
         :return: no return value
         """
-        if self.address is None:
-            return
-        cmdstr = '{"command": "start", "value": 0}'
-        _ = requests.post(self.address, cmdstr)
+        self.qcmd_communicate("start")
 
     def qcmd_status(self):
         """
@@ -152,13 +190,9 @@ class QCMDSignal(Signal):
 
         :return: no return value
         """
-        if self.address is None:
+        rstring = self.qcmd_communicate("get_status")
+        if rstring is None:
             return 'no connection'
-
-        cmdstr = '{"command": "get_status", "value": 0}'
-        r = requests.post(self.address, cmdstr)
-        rdict = json.loads(r.text)
-        rstring = rdict['result']
 
         return rstring
 
@@ -168,10 +202,7 @@ class QCMDSignal(Signal):
 
         :return: no return value
         """
-        if self.address is None:
-            return
-        cmdstr = '{"command": "stop", "value": 0}'
-        _ = requests.post(self.address, cmdstr)
+        self.qcmd_communicate("stop")
 
 
 class open_QCMD(Device):
@@ -213,7 +244,8 @@ class open_QCMD(Device):
         for k, v in set_later.items():
             setattr(self, k, v)
 
-        self.trigger()
+        # Not sure why one should trigger when initializing the object
+        # self.trigger()
 
     # Devide functionality implementation
     # see: https://nsls-ii.github.io/bluesky/hardware.html
