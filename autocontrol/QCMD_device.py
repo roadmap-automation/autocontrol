@@ -21,6 +21,7 @@ class QCMDSignal(Signal):
         Expected signature: ``f() -> value``.
         By default, triggering the signal does not change the value.
     name : string, keyword only
+    address: HTTP address to connect to the device
     exposure_time : number, optional
         Seconds of delay when triggered (simulated 'exposure time'). Default is
         0.
@@ -65,6 +66,8 @@ class QCMDSignal(Signal):
         # There should be only one key here, but for the sake of generality....
         for k in res:
             res[k]["precision"] = self.precision
+            res[k]["address"] = self.address
+            res[k]["exposure_time"] = self.exposure_time
         return res
 
     def stop(self):
@@ -91,6 +94,7 @@ class QCMDSignal(Signal):
                 # start QCMD and check for success
                 start_status = ''
                 self.qcmd_start()
+
                 for _ in range(10):
                     start_status = self.qcmd_status()
                     if start_status == 'measuring':
@@ -99,6 +103,7 @@ class QCMDSignal(Signal):
                         self.log.debug("Waiting for QCM-D to start measurement, %s", self)
                         print("Waiting for QCM-D to start measurement ...")
                     ttime.sleep(5)
+
                 if start_status == 'measuring':
                     self.log.debug("sleep_and_finish %s", self)
                     print("Started QCM-D measurement.")
@@ -223,9 +228,10 @@ class open_QCMD(Device):
 
     # From the documentation for Component:
     # A descriptor representing a device component (or signal).
-    # val will contain the collected QCM-d data in some shape or form to be determined
+
+    # val will contain the collected QCM-D data in some shape or form to be determined
     val = Cpt(QCMDSignal, kind="hinted", labels="primary")
-    freqs = Cpt(Signal, value=[1, 2, 3], kind="config")
+    # freqs = Cpt(Signal, value=[1, 2, 3], kind="config")
 
     def __init__(self, name, **kwargs):
         # [] can contain a number of PVs that are set later, see dummy_device.py
@@ -247,7 +253,7 @@ class open_QCMD(Device):
         # Not sure why one should trigger when initializing the object
         # self.trigger()
 
-    # Devide functionality implementation
+    # Device functionality implementation
     # see: https://nsls-ii.github.io/bluesky/hardware.html
 
     def subscribe(self, *args, **kwargs):
