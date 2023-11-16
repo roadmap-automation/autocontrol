@@ -108,7 +108,7 @@ class lh_device(Device):
         super().__init__(name=name, parent=parent, labels=labels, kind=kind, **kwargs)
         self.readback.name = self.name
 
-    def set(self, value: float) -> Status:
+    def set(self, value) -> Status:
         # TODO: See if the set can be moved to the setpoint signal
         def sleep_and_finish(value):
             print('Write command to LH')
