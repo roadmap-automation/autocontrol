@@ -10,15 +10,12 @@ import bluesky.preprocessors as bpp
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
 from event_model import RunRouter
-
 from databroker import Broker
-
 import math
-
 from queue import PriorityQueue
-
 from QCMD_device import open_QCMD
 from liquid_handler_device import lh_device
+import warnings
 
 
 def bec_factory(doc):
@@ -88,7 +85,7 @@ class autocontrol:
              'channel': measurement_channel,
              'meta': md,
              'type': item_type,
-             'mdevice': device,
+             'device': device,
              'priority': priority}
         )
         self.queue.put_nowait(item)
@@ -202,18 +199,58 @@ class autocontrol:
 
     @bpp.run_decorator(md={})
     def lh_plan(self, sample=None, measurement_channel=None):
+        """
+        Bluesky measurement plan for the liquid handler as implemented in liquid_handler_device.py
+
+        :param sample:
+        :param measurement_channel:
+        :return:
+        """
+
         md = {'sample': sample,
               'measurement_channel': measurement_channel,
               'start_time': time.gmtime(time.time())}
         yield from mv(self.lh, [sample, measurement_channel], md=md)
 
     @bpp.run_decorator(md={})
-    def qcmd_plan(self, sample='', measurement_channel=1):
-        md = {'sample': sample,
-              'measurement_channel': measurement_channel,
-              'start_time': time.gmtime(time.time())}
+    def qcmd_plan(self, sample='', measurement_channel=0, md=None):
+        """
+        Bluesky measurement plan for a QCMD device as implemented in QCMD_device.py
 
-        yield from count([self.qcmd], md=md)
+        :param sample: (optional) sample description, will be stored with the metadata
+        :param measurement_channel: (optional, default=0) the measurement channel to be used
+        :param md: (optional) metadata to be stored with the measurement
+        :return: no return value
+        """
+
+        def generate_new_key(base_key, dictionary):
+            new_key = base_key
+            counter = 1
+            while new_key in dictionary:
+                new_key = f"{base_key}_{counter}"
+                counter += 1
+            return new_key
+
+        def adjust_keys(keylist, dictionary):
+            for key in keylist:
+                if key in dictionary:
+                    new_key = generate_new_key(key, md)
+                    md[new_key] = md.pop(key)
+
+        # The QCMD device does not require the sample description for its measurement. It is only included in the
+        # metadata
+        md2 = {'sample': sample,
+               'measurement_channel': measurement_channel,
+               'start_time': time.gmtime(time.time())}
+        # merge with additional metadata
+        if md is not None:
+            # make sure that neither of the
+            adjust_keys(list(md2.keys()), md)
+            md3 = {**md, **md2}
+        else:
+            md3 = md2
+
+        yield from count([self.qcmd], md=md3)
 
 
 
