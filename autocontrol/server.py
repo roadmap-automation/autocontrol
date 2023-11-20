@@ -14,6 +14,10 @@ app_shutdown = False
 
 
 def background_task():
+    """
+    Flask server background task comprising an infinite loop executing one task of the Bluesky queue at a time.
+    :return: No return value.
+    """
     while not app_shutdown:
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
@@ -24,6 +28,12 @@ def background_task():
 
 
 def shutdown_server(wait_for_queue_to_empty=False):
+    """
+    Helper function for gracefully shutting down the Flask server.
+
+    :param wait_for_queue_to_empty: Boolean, whether to wait for the Bluesky API to process all tasks in the queue.
+    :return: Status string.
+    """
     global app_shutdown
 
     while wait_for_queue_to_empty:
@@ -44,33 +54,69 @@ def shutdown_server(wait_for_queue_to_empty=False):
     return 'Server shut down.'
 
 
-@app.route('/bss/')
+@app.route('/')
 def index():
-    return 'Server Started!'
+    """
+    Function routed to the default URL, mostly for ensuring that the Flask server started.
+
+    :return: Status string
+    """
+    return 'Bluesky Flask Server Started!'
 
 
-@app.route('/bss/put', methods=['POST'])
+@app.route('/put', methods=['POST'])
 def put_queue():
-    data = request.get_json()
-    if data is None:
-        result = {'No data received.': True}
-        return json.dumps(result)
+    """
+    POST request function that puts one task onto the Bluesky priorty queue.
 
-    dfields = ['sample', 'measurement_channel', 'md', 'sample_number', 'item_type', 'device']
+    The POST data must contain the following data fields:
+    'sample':               Information describing the task to be executed by the instrument. This field will be passed
+                            on to the instrument API.
+    'sample_number':        An ascending sample ID.
+    'measurement_channel':  Channel to be used in case parallel measurements are supported.
+    'md':                   Metadata to be saved with the measurement data.
+    'task_type':            A generic label for different types of tasks affecting how they are prioritized. Options:
+                            'preparation', 'measurement'.
+    'device':               Name of the device executing the task.
+
+    The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
+    The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
+    sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
+    tasks.
+
+    :return: Status string.
+    """
+
+    if request.method != 'POST':
+        return 'Error, request method is not POST.'
+
+    data = request.get_json()
+    if data is None or not isinstance(data, dict):
+        return 'Error, no valid data received.'
+
+    dfields = ['sample', 'measurement_channel', 'md', 'sample_number', 'task_type', 'device']
     if not set(dfields).issubset(data):
-        result = {'Not all datafields present.': True}
-        return json.dumps(result)
+        return 'Error, not all datafields present.'
 
     # put request in bluesky queue
     bsa.queue_put(sample=data['sample'], measurement_channel=data['measurement_channel'], md=data['md'],
-                  sample_number=data['sample_number'], item_type=data['item_type'], device=data['device'])
+                  sample_number=data['sample_number'], item_type=data['task_type'], device=data['device'])
 
-    result = {'Request succesfully enqueued.': True}
-    return json.dumps(result)
+    return 'Request succesfully enqueued.'
 
 
-@app.route('/bss/shutdown', methods=['POST'])
+@app.route('/shutdown', methods=['POST'])
 def stop_server():
+    """
+    POST request function that stops the Bluesky Flask server. The POST data may contain the following datafield:
+    'wait_for_queue_to_empty': waits for the Bluesky queue to finish all tasks before shutting down the server.
+
+    :return: status string
+    """
+
+    if request.method != 'POST':
+        return 'Error, request method is not POST.'
+
     data = request.get_json()
     if 'wait_for_queue_to_empty' not in data:
         response = shutdown_server()
@@ -88,7 +134,7 @@ if __name__ == '__main__':
     bg_thread.start()
 
     # run the Flas app
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5003)
 
 
 """
