@@ -10,3 +10,4 @@ matplotlib
 matplotlib-inline
 numpy
 requests
+flask

@@ -145,7 +145,7 @@ class autocontrol:
                 ret_value.append(item['channel'])
         return ret_value
 
-    def execute_one_item(self, sample=None, measurement_channel=None):
+    def execute_one_item(self):
 
         job = self.queue_get(prepare_only=self.prepare_only)
         if job is None:
