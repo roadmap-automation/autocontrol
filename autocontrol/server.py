@@ -99,8 +99,8 @@ def put_queue():
         return 'Error, not all datafields present.'
 
     # put request in bluesky queue
-    bsa.queue_put(sample=data['sample'], measurement_channel=data['measurement_channel'], md=data['md'],
-                  sample_number=data['sample_number'], item_type=data['task_type'], device=data['device'])
+    bsa.queue_put(sample=data['sample'], channel=data['measurement_channel'], md=data['md'],
+                  sample_number=data['sample_number'], task_type=data['task_type'], device=data['device'])
 
     return 'Request succesfully enqueued.'
 
