@@ -213,8 +213,6 @@ class autocontrol:
                         execute_task = False
                 elif task['channel'] in busy_channels:
                     # manual target channel is busy
-                    # TODO: How would a device know that a transfer is still in progress? A transfer needs to lock two
-                    #  devices?
                     execute_task = False
 
             return execute_task, task
@@ -239,7 +237,8 @@ class autocontrol:
         elif task['type'] == 'shut down':
             execute_task, task = process_shutdown(task)
         elif task['type' == 'exit']:
-            # TODO: Implement and compare with shut down
+            # TODO: Implement. This will be a way to complete a sample and release and blocked channels. Other clean up
+            #  tasks?
             execute_task = False
         else:
             execute_task, task = process_prepare_transfer_measurement(task)
@@ -250,6 +249,9 @@ class autocontrol:
             #  becomes tricky.
             # TODO: Implement in plan and API: instrument init with setting the number of channels, instrument shutdown,
             #  and exit with waiting for all jobs in queue to finish
+            # TODO: Implement resource blocking for all tasks. In particular, transfers need to block and release two
+            #  devices. Further, do we want to reserve certain device channels for a particular sample until all tasks
+            #  associated witha a sample have been processed?
             # Note: Every task execution including measurements only send a signal to the device and do not wait for
             # completion. Results are collected separately during self.update_active_tasks(). This allows using Bluesky
             # with parallel tasks.
@@ -318,7 +320,7 @@ class autocontrol:
         else:
             return 'No task executed.'
 
-    def queue_put(self, sample=None, channel=None, md=None, sample_number=None, task_type='prepare',
+    def queue_put(self, task=None, channel=None, md=None, sample_number=None, task_type='prepare',
                   device=None, target_device=None, target_channel=None):
         """
         Puts an item into the priority queue, which is of a certain task type.
@@ -328,7 +330,7 @@ class autocontrol:
         init: If channel field is not None, it sets up the device with the number of channels given in this data field.
         measurement: If channel is None, then the channel is selected automatically.
 
-        :param sample: (dict) A description of the sample that can be passed to the LH or potentially stored as md.
+        :param task: (dict) A description of the sample that can be passed to the LH or potentially stored as md.
         :param channel: (int) which measurement channel to use.
         :param md: (dict) Any metadata to attach to the run.
         :param sample_number: (int) Sample number for current Bluesky run. The lower, the higher the priority.
@@ -358,7 +360,7 @@ class autocontrol:
 
         item = (
             priority,
-            {'sample': sample,
+            {'task': task,
              'sample_number': sample_number,
              'channel': channel,
              'meta': md,
@@ -452,7 +454,7 @@ class autocontrol:
         that are in use for a particular device. It removes tasks that are finished from the list.
         :param devicename: device name
         :param device: device object
-        :return: tuple, list of channels in use and the modified tasklist
+        :return: tuple, list of channels free and in use
         """
         in_use_channels = []
         for task in self.active_tasks:

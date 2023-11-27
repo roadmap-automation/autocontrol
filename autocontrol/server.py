@@ -1,10 +1,6 @@
 import bluesky_api
 from flask import Flask
 from flask import request
-import flask.signals
-import json
-import sys
-import threading
 from threading import Thread
 import time
 
@@ -22,7 +18,7 @@ def background_task():
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
-        bsa.execute_one_item()
+        bsa.queue_execute_one_item()
         # sleep for some time before
         time.sleep(1)
 
@@ -70,14 +66,19 @@ def put_queue():
     POST request function that puts one task onto the Bluesky priorty queue.
 
     The POST data must contain the following data fields:
-    'sample':               Information describing the task to be executed by the instrument. This field will be passed
-                            on to the instrument API.
-    'sample_number':        An ascending sample ID.
-    'measurement_channel':  Channel to be used in case parallel measurements are supported.
-    'md':                   Metadata to be saved with the measurement data.
-    'task_type':            A generic label for different types of tasks affecting how they are prioritized. Options:
-                            'preparation', 'measurement'.
-    'device':               Name of the device executing the task.
+    'task':                 (dict) A dictionary describing the task to be executed by the instrument. This field will be
+                            passed on to the instrument API.
+    'sample_number':        (int) An ascending sample ID.
+    'channel':              (int) Channel to be used in case parallel measurements are supported.
+    'md':                   (dict) Metadata to be saved with the measurement data.
+    'task_type':            (str) A generic label for different types of tasks affecting how they are prioritized.
+                            Options:
+                            'init', 'prepare', 'transfer', 'measure', 'shut down', 'exit'
+    'device':               (str) Name of the device executing the task.
+
+    For transfer tasks, additionally the following data fields are required:
+    'target_device':        (str) The name of the device the materialed is transferred to;
+    'target_channel':       (int) The channel on the target device to be used, auto-select if None.
 
     The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
     The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
@@ -94,13 +95,13 @@ def put_queue():
     if data is None or not isinstance(data, dict):
         return 'Error, no valid data received.'
 
-    dfields = ['sample', 'measurement_channel', 'md', 'sample_number', 'task_type', 'device']
+    dfields = ['task', 'channel', 'md', 'sample_number', 'task_type', 'device']
     if not set(dfields).issubset(data):
-        return 'Error, not all datafields present.'
+        return 'Error, not all datafields provided.'
 
     # put request in bluesky queue
-    bsa.queue_put(sample=data['sample'], channel=data['measurement_channel'], md=data['md'],
-                  sample_number=data['sample_number'], task_type=data['task_type'], device=data['device'])
+    bsa.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
+                  task_type=data['task_type'], device=data['device'])
 
     return 'Request succesfully enqueued.'
 
