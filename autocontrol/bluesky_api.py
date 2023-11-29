@@ -9,6 +9,7 @@ from databroker import Broker
 import math
 from queue import PriorityQueue
 from QCMD_device import open_QCMD
+from task_container import TaskContainer
 from liquid_handler_device import lh_device
 from threading import Lock
 
@@ -42,19 +43,18 @@ def merge_dict(dict1=None, dict2=None):
     :param dict2: The dictionary containing the keys that will be renamed.
     :return: The merged dictionary.
     """
-    if dict1 is None and dict2 is None:
-        return None
     if dict1 is None:
-        return dict2
+        return dict2 or {}
     if dict2 is None:
         return dict1
 
-    for key in list(dict2.keys()):
-        if key in dict1:
-            new_key = generate_new_dict_key(key, dict1)
-            dict2[new_key] = dict2.pop(key)
+    merged_dict = dict1.copy()  # Create a copy of dict1
+    for key, value in dict2.items():
+        if key in merged_dict:
+            key = generate_new_dict_key(key, merged_dict)
+        merged_dict[key] = value
 
-    return {**dict1, **dict2}
+    return merged_dict
 
 
 class autocontrol:
@@ -62,9 +62,6 @@ class autocontrol:
 
         # accepts only sample preparations
         self.prepare_only = False
-
-        # currently executed preparations and measurements
-        self.active_tasks = []
 
         self.RE = RunEngine({})
         self.db = Broker.named('temp')
@@ -77,7 +74,7 @@ class autocontrol:
         self.lh = lh_device(name="lh", labels={"motors"})
 
         self.qcmd = open_QCMD("QCMD", labels={"detectors"})
-        # TODO: Move this to instrument initializatin routines
+        # TODO: Move this to instrument initialization routines
         self.qcmd.exposure_time = 1
         self.qcmd.address = "http://localhost:5011/QCMD/"
 
@@ -85,8 +82,10 @@ class autocontrol:
         self.queue = PriorityQueue()
         self.lock = Lock()
 
-        # sample tracker
-        self.sample_history = {}
+        # sample tracker for the entire task history
+        self.sample_history = TaskContainer()
+        # currently executed preparations and measurements
+        self.active_tasks = TaskContainer()
 
     # creates call backs for every run
 
@@ -131,89 +130,49 @@ class autocontrol:
             # currently no checks on shut down
             return True, task
 
-        def process_prepare_transfer_measurement(task):
-            # test if resource is generally available
-            # TODO: Implement status for accepting new commands in device APIs not using val
-            if device.val.status != '':
-                return False, task['device'] + ' is busy.'
+        def process_prepare_transfer_measure(task):
+            # Update list of all tasks in progress for the device and target device
+            free_channels, busy_channels, free_target_channels, busy_target_channels = (
+                self.update_active_tasks(task['device'], device))
 
-            # update list of all tasks in progress for the device and target device, including collecting results and
-            # removing finished entries. Yields a list of free
-            free_channels, busy_channels = self.update_active_tasks(task['device'], device)
-            if task['target_device'] is not None:
-                free_target_channels, busy_target_channels = self.update_active_tasks(task['target_device'],
-                                                                                      target_device)
+            # If there's a target device for a transfer, update target channels
+            if task['target_device'] and task['task_type'] == 'transfer':
+                free_target_channels2, busy_target_channels2, _, _ = (
+                    self.update_active_tasks(task['target_device'], target_device))
+                free_target_channels = list(set(free_target_channels) | set(free_target_channels2))
+                busy_target_channels = list(set(busy_target_channels) | set(busy_target_channels2))
+
+            # Find previous channel and target channel for this sample and device, the same channesl will be reused
+            if (task['channel'] is None and task['task_type'] != 'transfer') or (task['channel'] is None and
+                                                                                 task['target_channel'] is None):
+                channel, target_channel = self.sample_history.find_channels_for_sample_number_and_device(task)
             else:
-                free_target_channels = busy_target_channels = None
+                channel = target_channel = None
 
-            # find any of a registered previous instances of preparations of material of this sample on this device, and
-            # transfers to this device and from this device to return a previously used channel and target channel (for
-            # transfers). Since the route of a sample will use the same channels previously used ony one pair of channel
-            # and target channel is returned.
-            # TODO: Implement this function
-            channel, target_channel = self.sample_history_find(task, device=task['device'])
-
-            # assign channels, if possible
+            # Initialize execute_task flag
             execute_task = True
+
+            # Function to check and assign channel if available
+            def assign_channel(channel_attr, free_channels, busy_channels, history_channel=None):
+                if task[channel_attr] is None:
+                    if history_channel and history_channel not in busy_channels:
+                        task[channel_attr] = history_channel
+                    elif not history_channel and free_channels:
+                        task[channel_attr] = free_channels[0]
+                    else:
+                        return False  # No channel available or history channel busy
+                elif task[channel_attr] in busy_channels:
+                    return False  # Channel is busy
+                return True  # Channel assigned or already set
+
             if task['task_type'] == 'preparation':
-                if task['channel'] is None:
-                    if free_channels:
-                        # preparations are free to chose first available channel for autoselection independent of history
-                        task['channel'] = free_channels[0]
-                    else:
-                        # no free channels available
-                        execute_task = False
-                elif task['channel'] in busy_channels:
-                    # manual channel is busy
-                    execute_task = False
-
-            if task['task_type'] == 'transfer':
-                # consider source channel
-                if task['channel'] is None:
-                    # autoselection of channel
-                    if channel is not None and channel not in busy_channels:
-                        # sample position found in history and sample ready for transfer
-                        task['channel'] = channel
-                    else:
-                        # no sample found in history or sample not yet ready for transfer
-                        execute_task = False
-                elif task['channel'] in busy_channels:
-                    # manual source channel is busy, for example if a preparation, transfer, or measurement is still
-                    # ongoing
-                    execute_task = False
-
-                # consider the target channel
-                if task['target_channel'] is None:
-                    # autoselection of target channel
-                    if target_channel is not None:
-                        if target_channel not in busy_target_channels:
-                            # sample target position found in history and sample target ready to accept new sample
-                            task['target_channel'] = target_channel
-                        else:
-                            # sample target position found in history but target channel is busy:
-                            execute_task = False
-                    else:
-                        if free_target_channels:
-                            # target channel not found in history, autoselect takes first free channel
-                            task['target_channel'] = free_target_channels[0]
-                        else:
-                            # target channel not found in history but no free channels either
-                            execute_task = False
-                elif task['target_channel'] in busy_target_channels:
-                    # manual target channel is busy
-                    execute_task = False
-
-            if task['task_type'] == 'measurement':
-                if task['channel'] is None:
-                    if channel is not None and channel not in busy_channels:
-                        # channel found in history
-                        task['channel'] = channel
-                    else:
-                        # channel busy or no channel found in history, measurement task cannot autoselect
-                        execute_task = False
-                elif task['channel'] in busy_channels:
-                    # manual target channel is busy
-                    execute_task = False
+                execute_task = assign_channel('channel', free_channels, busy_channels)
+            elif task['task_type'] == 'transfer':
+                execute_task = assign_channel('channel', free_channels, busy_channels, channel)
+                execute_task &= assign_channel('target_channel', free_target_channels, busy_target_channels,
+                                               target_channel)
+            elif task['task_type'] == 'measurement':
+                execute_task = assign_channel('channel', free_channels, busy_channels, channel)
 
             return execute_task, task
 
@@ -232,6 +191,12 @@ class autocontrol:
         if device is None:
             return False, 'Unknown device.'
 
+        # test if resource is generally available
+        # TODO: Implement status for accepting new commands in device APIs not using val
+        # TODO: Not sure about device status for 'init'
+        if device.val.status != '':
+            return False, task['device'] + ' is busy.'
+
         if task['type'] == 'init':
             execute_task, task = process_init(task)
         elif task['type'] == 'shut down':
@@ -241,7 +206,7 @@ class autocontrol:
             #  tasks?
             execute_task = False
         else:
-            execute_task, task = process_prepare_transfer_measurement(task)
+            execute_task, task = process_prepare_transfer_measure(task)
 
         if execute_task:
             # TODO: We currently do not check whether execution was successful. Will need to address what to do in such
@@ -249,8 +214,7 @@ class autocontrol:
             #  becomes tricky.
             # TODO: Implement in plan and API: instrument init with setting the number of channels, instrument shutdown,
             #  and exit with waiting for all jobs in queue to finish
-            # TODO: Implement resource blocking for all tasks. In particular, transfers need to block and release two
-            #  devices. Further, do we want to reserve certain device channels for a particular sample until all tasks
+            # TODO: Do we want to reserve certain device channels for a particular sample until all tasks
             #  associated witha a sample have been processed?
             # Note: Every task execution including measurements only send a signal to the device and do not wait for
             # completion. Results are collected separately during self.update_active_tasks(). This allows using Bluesky
@@ -258,8 +222,8 @@ class autocontrol:
             yield from bpp.set_run_key_wrapper(plan(task=task), run_key)
 
             # store every task that is executed in history and active tasks
-            self.sample_history_put(task)
-            self.active_tasks.append(task)
+            self.sample_history.put(task)
+            self.active_tasks.put(task)
 
             resp = ('Succesfully started ' + task['type'] + ' for sample ' + str(task['sample_number']) + ' on ' +
                     task['device'])
@@ -450,29 +414,38 @@ class autocontrol:
 
     def update_active_tasks(self, devicename, device):
         """
-        Helper function that checks a tasklist, such as those for in-procuess preparation and measurement tasks for channels
-        that are in use for a particular device. It removes tasks that are finished from the list.
+        Helper function that checks a tasklist, such as those for in-procuess preparation and measurement tasks for
+        channels that are in use for a particular device. It removes tasks that are finished from the list.
         :param devicename: device name
         :param device: device object
-        :return: tuple, list of channels free and in use
+        :return: tuple, list of free_channels, busy_channels, free_target_channels, busy_target_channels
         """
-        in_use_channels = []
-        for task in self.active_tasks:
-            if task['device'] != devicename:
-                continue
+
+        # find in use channels based on stored active tasks
+        channels, target_channels = self.active_tasks.find_channels_for_device(devicename)
+
+        # check only those channels if they have become available to minimize device interactions
+        busy_channels = []
+        free_channels = []
+        for channel in channels:
             # TODO: needs implementation
-            if device.val.get_channel_status(task['channel']) == 'available':
-                # task is done, remove item from list
-                # TODO: initiate data readout
-                # TODO: if transfer task, unlock target channel
-                self.active_tasks.remove(task)
+            if device.val.get_channel_status(channel) == 'available':
+                # TODO: check for succesful task completion, initiate data readout
+                free_channels.append(channel)
             else:
-                # mark channel as in use
-                in_use_channels.append(int(task['channel']))
+                busy_channels.append(channel)
 
-        free_channels = [i for i in range(device.number_of_channels) if i not in in_use_channels]
+        # remove freed channels from active task list, which also unblocks target channels if applicable
+        self.active_tasks.remove_by_channel(free_channels)
 
-        return free_channels, in_use_channels
+        # update free channels
+        busy_channels, busy_target_channels = self.active_tasks.find_channels_for_device(devicename)
+
+        # determine free channels based on number of channels available
+        free_channels = [i for i in range(device.number_of_channels) if i not in busy_channels]
+        free_target_channels = [i for i in range(device.number_of_channels) if i not in busy_target_channels]
+
+        return free_channels, busy_channels, free_target_channels,  busy_target_channels
 
 
 
