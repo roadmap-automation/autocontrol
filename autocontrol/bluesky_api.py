@@ -127,7 +127,7 @@ class autocontrol:
             return True, task
 
         def process_shutdown(task):
-            # currently no checks on shut down
+            # TODO: Implement waiting for all active tasks to finish
             return True, task
 
         def process_prepare_transfer_measure(task):
@@ -249,7 +249,7 @@ class autocontrol:
         :return: String that reports on what action was taken.
         """
 
-        task_priority = [['init'], ['prepare', 'transfer', 'measure'], ['shut down'], ['exit']]
+        task_priority = [['init'], ['prepare', 'transfer', 'measure'],  ['exit'], ['shut down']]
         response = ''
         blocked_samples = []
         unsuccesful_jobs = []
@@ -313,11 +313,13 @@ class autocontrol:
         :return: no return value
         """
 
+        # TODO: Add time stamps at various points during processing
         # create a priority value with the following importance
         # 1. Sample number
         # 2. Time that step was submitted
         # convert time to a priority <1
         p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
+
         # convert sample number to priority, always overriding start time.
         priority = sample_number * (-1.)
         priority -= p1
@@ -429,7 +431,7 @@ class autocontrol:
         free_channels = []
         for channel in channels:
             # TODO: needs implementation
-            if device.val.get_channel_status(channel) == 'available':
+            if device.val.get_channel_status(channel) == 'free':
                 # TODO: check for succesful task completion, initiate data readout
                 free_channels.append(channel)
             else:

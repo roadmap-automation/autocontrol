@@ -32,6 +32,8 @@ def shutdown_server(wait_for_queue_to_empty=False):
     """
     global app_shutdown
 
+    # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
+
     while wait_for_queue_to_empty:
         if bsa.queue.empty():
             break
