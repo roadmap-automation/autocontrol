@@ -191,27 +191,19 @@ class autocontrol:
         if device is None:
             return False, 'Unknown device.'
 
-        # test if resource is generally available
-        # TODO: Implement status for accepting new commands in device APIs not using val
-        # TODO: Not sure about device status for 'init'
-        if device.val.status != '':
-            return False, task['device'] + ' is busy.'
-
         if task['type'] == 'init':
             execute_task, task = process_init(task)
         elif task['type'] == 'shut down':
             execute_task, task = process_shutdown(task)
         elif task['type' == 'exit']:
-            # TODO: Implement. This will be a way to complete a sample and release and blocked channels. Other clean up
-            #  tasks?
+            # TODO: Implement. Ending main loop. Other clean up tasks?
             execute_task = False
         else:
             execute_task, task = process_prepare_transfer_measure(task)
 
         if execute_task:
-            # TODO: We currently do not check whether execution was successful. Will need to address what to do in such
-            #  a situation. When multiple samples are being prepared, any on-the-fly error handling and rescheduling
-            #  becomes tricky.
+            # TODO: Implement status from submitting task. If task submission was not succesful, indicate in
+            #  execute_task and resp variables.
             # TODO: Implement in plan and API: instrument init with setting the number of channels, instrument shutdown,
             #  and exit with waiting for all jobs in queue to finish
             # TODO: Do we want to reserve certain device channels for a particular sample until all tasks
