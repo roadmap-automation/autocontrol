@@ -431,6 +431,8 @@ class autocontrol:
                 busy_channels.append(channel)
 
         # remove freed channels from active task list, which also unblocks target channels if applicable
+        # TODO: Clean up the argument mismatch and save freed chanels per device one might want to block them for the
+        #  same type of sample and only release on a sample finish
         self.active_tasks.remove_by_channel(free_channels)
 
         # update free channels
@@ -441,6 +443,3 @@ class autocontrol:
         free_target_channels = [i for i in range(device.number_of_channels) if i not in busy_target_channels]
 
         return free_channels, busy_channels, free_target_channels,  busy_target_channels
-
-
-
