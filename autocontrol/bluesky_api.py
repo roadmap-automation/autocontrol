@@ -385,6 +385,7 @@ class autocontrol:
 
         yield from mv(self.lh, [sample, channel], md=md3)
 
+    # TODO: Externalize the run plans and create a dynamic device list from an init task
     @bpp.run_decorator(md={})
     def qcmd_plan(self, sample=None, channel=0, md=None):
         """
