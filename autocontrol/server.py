@@ -2,11 +2,16 @@ import bluesky_api
 from flask import Flask
 from flask import request
 from threading import Thread
+from typing import Optional
 import time
+from werkzeug.serving import run_simple
 
 app = Flask(__name__)
 # shutdown signal
 app_shutdown = False
+# intialize global variables
+bsa: Optional[bluesky_api.autocontrol] = None
+bg_thread: Optional[Thread] = None
 
 
 def background_task():
@@ -46,8 +51,10 @@ def shutdown_server(wait_for_queue_to_empty=False):
 
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
+        # raise RuntimeError('Not running with the Werkzeug Server')
+        print('Not running with the Werkzeug Server. Server will shut down with program exit.')
+    else:
+        func()
 
     return 'Server shut down.'
 
@@ -108,6 +115,24 @@ def put_queue():
     return 'Request succesfully enqueued.'
 
 
+def start_server(host='0.0.0.0', port=5003):
+    def app_start():
+        run_simple('localhost', port, app)
+
+    # initialize bluesky API
+    global bsa
+    bsa = bluesky_api.autocontrol()
+
+    # start the background thread
+    global bg_thread
+    bg_thread = Thread(target=background_task, daemon=True)
+    bg_thread.start()
+
+    # run the Flask app
+    server_thread = Thread(target=app_start, daemon=True)
+    server_thread.start()
+
+
 @app.route('/shutdown', methods=['POST'])
 def stop_server():
     """
@@ -129,15 +154,7 @@ def stop_server():
 
 
 if __name__ == '__main__':
-    # initialize bluesky API
-    bsa = bluesky_api.autocontrol()
-
-    # start the background thread
-    bg_thread = Thread(target=background_task, daemon=True)
-    bg_thread.start()
-
-    # run the Flas app
-    app.run(host='0.0.0.0', port=5003)
+    start_server(host='0.0.0.0', port=5003)
 
 
 """
