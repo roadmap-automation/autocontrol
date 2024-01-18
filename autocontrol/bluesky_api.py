@@ -211,7 +211,8 @@ class autocontrol:
             # Note: Every task execution including measurements only send a signal to the device and do not wait for
             # completion. Results are collected separately during self.update_active_tasks(). This allows using Bluesky
             # with parallel tasks.
-            yield from bpp.set_run_key_wrapper(plan(task=task), run_key)
+            # TODO: Implement without yield
+            # yield from bpp.set_run_key_wrapper(plan(task=task), run_key)
 
             # store every task that is executed in history and active tasks
             self.sample_history.put(task)
@@ -223,6 +224,18 @@ class autocontrol:
             resp = 'Channel or target channel are in use.'
 
         return execute_task, resp
+
+    def queue_inspect(self):
+        """
+        Returns the items of the queue in a list without removing them from the queue.
+        :return: (list) the items of the queue
+        """
+
+        return_list = []
+        for item in self.queue.queue:
+            return_list.append(item)
+
+        return return_list
 
     def queue_execute_one_item(self):
         """
@@ -383,7 +396,8 @@ class autocontrol:
                'start_time': time.gmtime(time.time())}
         md3 = merge_dict(md2, md)
 
-        yield from mv(self.lh, [sample, channel], md=md3)
+        # TODO: Implement move without yield
+        # yield from mv(self.lh, [sample, channel], md=md3)
 
     # TODO: Externalize the run plans and create a dynamic device list from an init task
     @bpp.run_decorator(md={})
@@ -405,7 +419,7 @@ class autocontrol:
         md3 = merge_dict(md2, md)
 
         # TODO: Change this to mv, as we will most likely decouple starting a measurement and retrieving the data
-        yield from count([self.qcmd], md=md3)
+        # yield from count([self.qcmd], md=md3)
 
     def update_active_tasks(self, devicename, device):
         """

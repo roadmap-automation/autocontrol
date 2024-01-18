@@ -1,6 +1,7 @@
 import bluesky_api
 from flask import Flask
 from flask import request
+import json
 from threading import Thread
 from typing import Optional
 import time
@@ -69,8 +70,25 @@ def index():
     return 'Bluesky Flask Server Started!'
 
 
+@app.route('/queue_inspect', methods=['GET'])
+def queue_inspect():
+    """
+    Retrieves all queue items without removing them from the queue and prints them in the terminal.
+    :return: (str) status
+    """
+    queue_items = bsa.queue_inspect()
+    print('Inspecting queue...')
+    print('Received {} queued items.'.format(len(queue_items)))
+    for number, item in enumerate(queue_items):
+        print('Item ' + str(number+1) + ', Priority ' + str(item[0]) + ': ')
+        formatted_item = json.dumps(item[1], indent=4)
+        print(formatted_item)
+
+    return 'Queue successfully printed.'
+
+
 @app.route('/put', methods=['POST'])
-def put_queue():
+def queue_put():
     """
     POST request function that puts one task onto the Bluesky priorty queue.
 
