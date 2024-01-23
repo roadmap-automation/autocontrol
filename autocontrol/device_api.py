@@ -122,7 +122,7 @@ class autocontrol:
 
         def process_init(task):
             device = self.get_device_object(task['device'])
-            device_status = device.get_status()
+            device_status = device.get_device_status()
             if device_status != Status.UP:
                 ret = False
             else:

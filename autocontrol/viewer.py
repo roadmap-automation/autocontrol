@@ -8,30 +8,29 @@ import numpy as np
 
 from urllib.parse import urljoin
 
+
+@st.cache_data
+def load_sql(filename):
+    storage_path = '../test/'
+    # load status from SQLlite databases
+    localhost = "sqlite:///"
+    absolute_path = os.path.abspath(os.path.join(storage_path, filename+'.sqlite3'))
+    url = localhost + absolute_path
+    conn = st.connection(filename, type='sql', url=url)
+    try:
+        df = conn.query('select * from task_table')
+    except Exception:
+        df = pd.DataFrame()
+    return df
+
+
 st.set_page_config(layout="wide")
 st.title('Autocontrol Viewer')
 
-# load status from SQLlite databases
-storage_path = '../test/'
 
-localhost = "sqlite:///"
-absolute_path = os.path.abspath(os.path.join(storage_path, 'priority_queue.sqlite3'))
-url = localhost + absolute_path
-conn = st.connection('priority_queue', type='sql', url=url)
-priority_queue = conn.query('select * from task_table')
-
-absolute_path2 = os.path.abspath(os.path.join(storage_path, 'active_queue.sqlite3'))
-url2 = localhost + absolute_path2
-conn2 = st.connection('active_queue', type='sql', url=url2)
-active_queue = conn2.query('select * from task_table')
-
-absolute_path3 = os.path.abspath(os.path.join(storage_path, 'history_queue.sqlite3'))
-url3 = localhost + absolute_path3
-conn3 = st.connection('history_queue', type='sql', url=url3)
-history_queue = conn3.query('select * from task_table')
-
-# remove active jobs out of history queue:
-history_queue = history_queue[~history_queue['id'].isin(active_queue['id'])]
+priority_queue = load_sql('priority_queue')
+active_queue = load_sql('active_queue')
+history_queue = load_sql('history_queue')
 
 
 # create flow chart via graphviz
@@ -44,6 +43,7 @@ def render_cluster(data, graph, name='0', color='grey'):
                 'ID:' + str(row['id']) + ', Sample ' + str(row['sample_number']) + ',\n' + row['task_type'] + ' ' +
                 row['device'] + '(' + str(row['channel']) + ')')
 
+
 g = graphviz.Graph('gvg')
 render_cluster(priority_queue, g, name='Priority Queue', color='lightblue')
 
@@ -54,6 +54,7 @@ for device in grouped.groups:
     # st.dataframe(device_df)
     render_cluster(device_df, g, name=device_df.at[0, 'device'], color='lightgreen')
 
+storage_path = '../test/'
 render_cluster(history_queue, g, name='History Queue', color='orange')
 g.render(filename=os.path.join(storage_path, 'gvg'), format='png')
 
@@ -98,6 +99,9 @@ st.dataframe(history_queue,
                             }
              )
 
-st.button('Reload', type="primary")
-# time.sleep(5)
-#st.rerun()
+
+# if st.button('Reload', type="primary"):
+
+time.sleep(10)
+st.cache_data.clear()
+st.rerun()

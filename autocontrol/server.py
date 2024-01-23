@@ -44,7 +44,7 @@ def shutdown_server(wait_for_queue_to_empty=False):
     # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
 
     while wait_for_queue_to_empty:
-        if dev_api.queue.empty():
+        if dev_api.queue.empty() and dev_api.active_tasks.empty():
             break
         time.sleep(10)
 
@@ -180,8 +180,10 @@ def stop_server():
 
     data = request.get_json()
     if 'wait_for_queue_to_empty' not in data:
+        print('Shutting down server without waiting for queue.')
         response = shutdown_server()
     else:
+        print('Shutting down server after waiting for queue to empty.')
         response = shutdown_server(wait_for_queue_to_empty=data['wait_for_queue_to_empty'])
     return response
 

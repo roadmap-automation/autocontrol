@@ -18,6 +18,27 @@ class TaskContainer:
 
         self._create_table()
 
+    def empty(self):
+        """
+        Tests if the task container is empty.
+        :return: (bool) True if the task container is empty, False otherwise.
+        """
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT count(*) FROM (select 1 from task_table limit 1);")
+        result = cursor.fetchall()[0][0]
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        if result == 0:
+            return True
+        else:
+            return False
+
     def _create_table(self):
 
         self.lock.acquire()
@@ -178,6 +199,9 @@ class TaskContainer:
             query = ("SELECT * FROM task_table WHERE task_type IN ('" + task_type_str +
                      "') ORDER BY priority DESC LIMIT 1")
         else:
+            cursor.close()
+            conn.close()
+            self.lock.release()
             return None
 
         cursor.execute(query)

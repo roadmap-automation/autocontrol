@@ -3,6 +3,7 @@ import multiprocessing
 import os
 import requests
 import server
+import signal
 import socket
 import subprocess
 import time
@@ -67,7 +68,7 @@ def integration_test():
     # ------------------ Submitting Task ----------------------------------
 
     task = {
-        'task': 'test_task',
+        'task': {'description': 'test5'},
         'sample_number': 1,
         'channel': 0,
         'md':  {
@@ -89,7 +90,7 @@ def integration_test():
     print('Stopping Flask')
     url = 'http://localhost:' + str(port) + '/shutdown'
     headers = {'Content-Type': 'application/json'}
-    data = json.dumps({})
+    data = json.dumps({'wait_for_queue_to_empty': True})
     response = requests.post(url, headers=headers, data=data)
 
     time.sleep(2)
@@ -97,6 +98,14 @@ def integration_test():
     print('Integration test done.')
     print('Program exit.')
 
+    # Wait for user input
+    user_input = input("Please enter some text and press Enter to stop all process: ")
+
 
 if __name__ == '__main__':
     integration_test()
+    # UNIX-style termination of all child processes including the test Flask server
+    # Get the process group ID of the current process
+    pgid = os.getpgid(os.getpid())
+    # Send a SIGTERM signal to the process group to terminate all child processes
+    os.killpg(pgid, signal.SIGTERM)
