@@ -1,23 +1,11 @@
 import time
-from bluesky.plan_stubs import mv
-from bluesky.plans import count
 import bluesky.preprocessors as bpp
-from bluesky import RunEngine
-from bluesky.callbacks.best_effort import BestEffortCallback
-from event_model import RunRouter
-from databroker import Broker
 import math
-from queue import PriorityQueue
+import os
 from QCMD_device import open_QCMD
 from task_container import TaskContainer
 from liquid_handler_device import lh_device
-from threading import Lock
-
-
-def bec_factory(doc):
-    # Each run is subscribed to independent instance of BEC
-    bec = BestEffortCallback()
-    return [bec], []
+from status import Status
 
 
 def generate_new_dict_key(base_key, dictionary):
@@ -58,55 +46,65 @@ def merge_dict(dict1=None, dict2=None):
 
 
 class autocontrol:
-    def __init__(self, num_meas_channels=1):
+    def __init__(self, num_meas_channels=1, storage_path=None):
 
         # accepts only sample preparations
         self.prepare_only = False
 
-        self.RE = RunEngine({})
-        self.db = Broker.named('temp')
-        self.RE.subscribe(self.db.insert)
-
-        # dynamic call back subscription
-        rr = RunRouter([bec_factory])
-        self.RE.subscribe(rr)
-
+        # Devices
         self.lh = lh_device(name="lh", labels={"motors"})
+        self.qcmd = open_QCMD("QCMD")
 
-        self.qcmd = open_QCMD("QCMD", labels={"detectors"})
         # TODO: Move this to instrument initialization routines
         self.qcmd.exposure_time = 1
         self.qcmd.address = "http://localhost:5011/QCMD/"
 
-        # priority queue and locking
-        self.queue = PriorityQueue()
-        self.lock = Lock()
+        # Queues and containers
+        if storage_path is None:
+            storage_path = '../test/'
 
+        db_path_queue = os.path.join(storage_path, 'priority_queue.sqlite3')
+        db_path_history = os.path.join(storage_path, 'history_queue.sqlite3')
+        db_path_active = os.path.join(storage_path, 'active_queue.sqlite3')
+
+        # priority queue for future tasks
+        self.queue = TaskContainer(db_path_queue)
         # sample tracker for the entire task history
-        self.sample_history = TaskContainer()
+        self.sample_history = TaskContainer(db_path_history)
         # currently executed preparations and measurements
-        self.active_tasks = TaskContainer()
+        self.active_tasks = TaskContainer(db_path_active)
 
     # creates call backs for every run
 
     def get_device_object(self, name):
         """
-        Helper function that identifies the device object and Bluesky plan based on the device name.
+        Helper function that identifies the device object and plan based on the device name.
         :param name: device name
-        :return: (tuple), device object and plan
+        :return: device object
         """
-        if name == 'LH':
+        if name == 'LH' or name == 'lh':
             device = self.lh
-            plan = self.lh_plan
-        elif name == 'QCMD':
+        elif name == 'QCMD' or name == 'qcmd':
             device = self.qcmd
-            plan = self.qcmd_plan
         else:
             device = None
-            plan = None
-        return device, plan
+        return device
 
-    def process_job(self, job):
+    def get_channel_information_from_active_tasks(self, devicename):
+        """
+        Helper function that checks the active tasklist for channels that are in use for a particular device.
+        :param devicename: device name for which the channel availability will be checked
+        :return: tuple, list of free_channels, busy_channels
+        """
+
+        device = self.get_device_object(devicename)
+        # find in-use channels based on stored active tasks
+        busy_channels, _ = self.active_tasks.find_channels_for_device(devicename)
+        free_channels = list(set(range(1, device.number_of_channels+1)) - set(busy_channels))
+
+        return free_channels, busy_channels
+
+    def process_job(self, task):
         """
         Processes one job task and returns status.
 
@@ -118,13 +116,19 @@ class autocontrol:
         number will follow the same path between devices. This makes sure that subsequent measurements are made using
         the same channel or substrate.
 
-        :param job: (list) job object, [priority, task]
+        :param task: (list) job object, [priority, task]
         :return: (bool, str) success flag, response string
         """
 
         def process_init(task):
-            # currently no checks on init
-            return True, task
+            device = self.get_device_object(task['device'])
+            device_status = device.get_status()
+            if device_status != Status.UP:
+                ret = False
+            else:
+                ret = True
+            # currently no further checks on init
+            return ret, task
 
         def process_shutdown(task):
             # TODO: Implement waiting for all active tasks to finish
@@ -132,15 +136,12 @@ class autocontrol:
 
         def process_prepare_transfer_measure(task):
             # Update list of all tasks in progress for the device and target device
-            free_channels, busy_channels, free_target_channels, busy_target_channels = (
-                self.update_active_tasks(task['device'], device))
+            free_channels, busy_channels, = self.get_channel_information_from_active_tasks(task['device'])
 
             # If there's a target device for a transfer, update target channels
             if task['target_device'] and task['task_type'] == 'transfer':
-                free_target_channels2, busy_target_channels2, _, _ = (
-                    self.update_active_tasks(task['target_device'], target_device))
-                free_target_channels = list(set(free_target_channels) | set(free_target_channels2))
-                busy_target_channels = list(set(busy_target_channels) | set(busy_target_channels2))
+                free_target_channels, busy_target_channels = (
+                    self.get_channel_information_from_active_tasks(task['target_device']))
 
             # Find previous channel and target channel for this sample and device, the same channesl will be reused
             if (task['channel'] is None and task['task_type'] != 'transfer') or (task['channel'] is None and
@@ -176,50 +177,47 @@ class autocontrol:
 
             return execute_task, task
 
-        priority = job[0]
-        task = job[1]
-
-        # Generate unique key for each run. The key generation algorithm
-        # must only guarantee that execution of the runs that are assigned
-        # the same key will never overlap in time.
-        run_key = f"run_key_{str(priority * (-1))}"
-
         # identify the device based on the device name
-        device, plan = self.get_device_object(task['device'])
+        device = self.get_device_object(task['device'])
         # for transfer tasks only
-        target_device, target_plan = self.get_device_object(task['target_device'])
+        target_device = self.get_device_object(task['target_device'])
         if device is None:
             return False, 'Unknown device.'
 
-        if task['type'] == 'init':
+        if task['task_type'] == 'init':
             execute_task, task = process_init(task)
-        elif task['type'] == 'shut down':
+        elif task['task_type'] == 'shut down':
             execute_task, task = process_shutdown(task)
-        elif task['type' == 'exit']:
+        elif task['task_type' == 'exit']:
             # TODO: Implement. Ending main loop. Other clean up tasks?
             execute_task = False
         else:
             execute_task, task = process_prepare_transfer_measure(task)
 
         if execute_task:
-            # TODO: Implement status from submitting task. If task submission was not succesful, indicate in
-            #  execute_task and resp variables.
             # TODO: Implement in plan and API: instrument init with setting the number of channels, instrument shutdown,
             #  and exit with waiting for all jobs in queue to finish
             # TODO: Do we want to reserve certain device channels for a particular sample until all tasks
             #  associated witha a sample have been processed?
             # Note: Every task execution including measurements only send a signal to the device and do not wait for
-            # completion. Results are collected separately during self.update_active_tasks(). This allows using Bluesky
-            # with parallel tasks.
-            # TODO: Implement without yield
-            # yield from bpp.set_run_key_wrapper(plan(task=task), run_key)
+            # completion. Results are collected separately during self.get_channel_information_from_active_tasks(). This allows for
+            # parallel tasks.
 
-            # store every task that is executed in history and active tasks
-            self.sample_history.put(task)
-            self.active_tasks.put(task)
+            # add start time to metadata
+            md2 = {'execution_start_time': time.gmtime(time.time())}
+            # merge with additional metadata
+            task['md'] = merge_dict(task['md'], md2)
 
-            resp = ('Succesfully started ' + task['type'] + ' for sample ' + str(task['sample_number']) + ' on ' +
-                    task['device'])
+            status = device.execute_task(task=task)
+            if status == Status.SUCCESS:
+                # store every task that is executed active tasks
+                self.active_tasks.put(task)
+                resp = ('Succesfully started ' + task['task_type'] + ' for sample ' + str(task['sample_number']) +
+                        ' on ' + task['device'])
+            else:
+                execute_task = False
+                resp = 'Task failed at instrument.'
+
         else:
             resp = 'Channel or target channel are in use.'
 
@@ -231,11 +229,7 @@ class autocontrol:
         :return: (list) the items of the queue
         """
 
-        return_list = []
-        for item in self.queue.queue:
-            return_list.append(item)
-
-        return return_list
+        return self.queue.get_all()
 
     def queue_execute_one_item(self):
         """
@@ -264,25 +258,25 @@ class autocontrol:
         while i < len(task_priority):
             task_type = task_priority[i]
             # retrieve job from queue
-            job = self.queue_get(task_type=task_type)
+            job = self.queue.get_and_remove_by_priority(task_type=task_type)
             if job is None:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1
-            elif job[1]['sample_number'] not in blocked_samples:
+            elif job['sample_number'] not in blocked_samples:
                 success, response = self.process_job(job)
                 if success:
                     # a succesful job ends the execution of this method
                     break
                 else:
                     # this sample number is now blocked as processing of the job was not successful
-                    blocked_samples.append(job[1]['sample_number'])
+                    blocked_samples.append(job['sample_number'])
                     unsuccesful_jobs.append(job)
             else:
                 unsuccesful_jobs.append(job)
 
         # put unsuccessful jobs back in the queue
         for job in unsuccesful_jobs:
-            self.queue.put_nowait(job)
+            self.queue.put(job)
 
         if success:
             return 'Success.\n ' + response
@@ -324,136 +318,71 @@ class autocontrol:
         # 2. Time that step was submitted
         # convert time to a priority <1
         p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
-
         # convert sample number to priority, always overriding start time.
         priority = sample_number * (-1.)
         priority -= p1
 
-        item = (
-            priority,
-            {'task': task,
-             'sample_number': sample_number,
-             'channel': channel,
-             'meta': md,
-             'task_type': task_type,
-             'device': device,
-             'priority': priority,
-             'target_device': target_device,
-             'target_channel': target_channel
-             }
-        )
-        self.queue.put_nowait(item)
+        item = {
+            'task': task,
+            'sample_number': sample_number,
+            'channel': channel,
+            'md': md,
+            'task_type': task_type,
+            'device': device,
+            'priority': priority,
+            'target_device': target_device,
+            'target_channel': target_channel
+        }
 
-    def queue_get(self, task_type=None):
+        self.queue.put(item)
+
+    def update_active_tasks(self):
         """
-        Retrieves an item from the preparation queue.
-        :param task_type: if not None, (list) filter by task types contained in list
-        :return: Data field of the retrieved item or None if none retrieved
-        """
-        def get_highest_priority_item_by_task(queue, task_type):
-            # create a new priority queue
-            queue2 = PriorityQueue()
-
-            all_items = [item for item in queue.queue]
-            # create a list of all items in the queue where 'step' is 'prepare'
-            task_type_items = [item for item in queue.queue if item[1]['task_type'] in task_type]
-
-            # return the data dict of the first item in the sorted list, if it exists and create a new list without it
-            if task_type_items:
-                # sort the prepare_items list in descending order of priority value
-                task_type_items.sort(key=lambda item: item[1]['priority'], reverse=True)
-                for item in all_items:
-                    # priority is a unique identifier
-                    if item[1]['priority'] != task_type_items[0][1]['priority']:
-                        queue2.put_nowait(item)
-                return queue2, task_type_items[0]
-            else:
-                return queue, None
-
-        if self.queue.empty():
-            return None
-
-        # non-standard queue manipulation requires thread lock
-        with self.lock:
-            if task_type is not None:
-                self.queue, item = get_highest_priority_item_by_task(self.queue, task_type)
-            else:
-                item = self.queue.get_nowait()
-
-        return item
-
-    @bpp.run_decorator(md={})
-    def lh_plan(self, sample=None, channel=0, md=None):
-        """
-        Bluesky measurement plan for the liquid handler as implemented in liquid_handler_device.py
-        :param sample: (optional) sample description, will be stored with the metadata
-        :param channel: (optional, default=0) the measurement channel to be used
-        :param md: (optional) metadata to be stored with the measurement
-        :return: no return value
-        """
-        md2 = {'sample': sample,
-               'channel': channel,
-               'start_time': time.gmtime(time.time())}
-        md3 = merge_dict(md2, md)
-
-        # TODO: Implement move without yield
-        # yield from mv(self.lh, [sample, channel], md=md3)
-
-    # TODO: Externalize the run plans and create a dynamic device list from an init task
-    @bpp.run_decorator(md={})
-    def qcmd_plan(self, sample=None, channel=0, md=None):
-        """
-        Bluesky measurement plan for a QCMD device as implemented in QCMD_device.py
-        :param sample: (optional) sample description, will be stored with the metadata
-        :param channel: (optional, default=0) the measurement channel to be used
-        :param md: (optional) metadata to be stored with the measurement
+        Goes through the entire list of active tasks and checks if they are completed. Follows up with clean-up steps.
         :return: no return value
         """
 
-        # The QCMD device does not require the sample description for its measurement. It is only included in the
-        # metadata
-        md2 = {'sample': sample,
-               'channel': channel,
-               'start_time': time.gmtime(time.time())}
-        # merge with additional metadata
-        md3 = merge_dict(md2, md)
+        # TODO: incorporate acquisition time
 
-        # TODO: Change this to mv, as we will most likely decouple starting a measurement and retrieving the data
-        # yield from count([self.qcmd], md=md3)
+        task_list = self.active_tasks.get_all()
 
-    def update_active_tasks(self, devicename, device):
-        """
-        Helper function that checks a tasklist, such as those for in-procuess preparation and measurement tasks for
-        channels that are in use for a particular device. It removes tasks that are finished from the list.
-        :param devicename: device name
-        :param device: device object
-        :return: tuple, list of free_channels, busy_channels, free_target_channels, busy_target_channels
-        """
-
-        # find in use channels based on stored active tasks
-        channels, target_channels = self.active_tasks.find_channels_for_device(devicename)
-
-        # check only those channels if they have become available to minimize device interactions
-        busy_channels = []
-        free_channels = []
-        for channel in channels:
-            # TODO: needs implementation
-            if device.val.get_channel_status(channel) == 'free':
-                # TODO: check for succesful task completion, initiate data readout
-                free_channels.append(channel)
+        for task in task_list:
+            device = self.get_device_object(task['device'])
+            if task['channel'] is None:
+                # channel-less task such as init
+                status = device.get_device_status()
+                if status != Status.UP:
+                    # device is not ready to accept new commands and therefore, the current one is not finished
+                    continue
             else:
-                busy_channels.append(channel)
+                # get channel-dependent status
+                channel_status = device.get_channel_status(task['channel'])
+                if channel_status == Status.BUSY:
+                    # task not done
+                    continue
+                if task['target_channel'] is not None:
+                    target_device = self.get_device_object(task['target_device'])
+                    target_channel_status = target_device.get_channel_status(task['target_channel'])
+                    if target_channel_status == Status.BUSY:
+                        # task not done
+                        continue
 
-        # remove freed channels from active task list, which also unblocks target channels if applicable
-        # TODO: Clean up the argument mismatch and save freed chanels per device one might want to block them for the
-        #  same type of sample and only release on a sample finish
-        self.active_tasks.remove_by_channel(free_channels)
+            # task is ready for collection
 
-        # update free channels
-        busy_channels, busy_target_channels = self.active_tasks.find_channels_for_device(devicename)
+            # get measurment data
+            if task['task_type'] == 'measure':
+                while device.get_device_status() != Status.UP:
+                    # wait for device to become available to retrieve data
+                    # TODO: Better exception handling for this critical case
+                    print('Device {} not up.', task['device'])
+                    time.sleep(10)
+                data = device.read(channel=task['channel'])
+                # append data to task
+                if 'md' not in task:
+                    task['md'] = {}
+                task['md']['measurement_data'] = data
 
-        # determine free channels based on number of channels available
-        free_channels = [i for i in range(device.number_of_channels) if i not in busy_channels]
-        free_target_channels = [i for i in range(device.number_of_channels) if i not in busy_target_channels]
+            # move task to history
+            self.active_tasks.remove(task)
+            self.sample_history.put(task)
 
-        return free_channels, busy_channels, free_target_channels,  busy_target_channels

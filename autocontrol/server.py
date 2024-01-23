@@ -1,4 +1,4 @@
-import bluesky_api
+import device_api
 from flask import Flask
 from flask import request
 import json
@@ -11,7 +11,7 @@ app = Flask(__name__)
 # shutdown signal
 app_shutdown = False
 # intialize global variables
-bsa: Optional[bluesky_api.autocontrol] = None
+dev_api: Optional[device_api.autocontrol] = None
 bg_thread: Optional[Thread] = None
 
 
@@ -21,12 +21,15 @@ def background_task():
     :return: No return value.
     """
     while not app_shutdown:
+        # check on all active tasks and handle if they are finished
+        dev_api.update_active_tasks()
+
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
-        bsa.queue_execute_one_item()
+        dev_api.queue_execute_one_item()
         # sleep for some time before
-        time.sleep(1)
+        time.sleep(10)
 
 
 def shutdown_server(wait_for_queue_to_empty=False):
@@ -41,7 +44,7 @@ def shutdown_server(wait_for_queue_to_empty=False):
     # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
 
     while wait_for_queue_to_empty:
-        if bsa.queue.empty():
+        if dev_api.queue.empty():
             break
         time.sleep(10)
 
@@ -76,12 +79,12 @@ def queue_inspect():
     Retrieves all queue items without removing them from the queue and prints them in the terminal.
     :return: (str) status
     """
-    queue_items = bsa.queue_inspect()
+    queue_items = dev_api.queue_inspect()
     print('Inspecting queue...')
     print('Received {} queued items.'.format(len(queue_items)))
     for number, item in enumerate(queue_items):
-        print('Item ' + str(number+1) + ', Priority ' + str(item[0]) + ': ')
-        formatted_item = json.dumps(item[1], indent=4)
+        print('Item ' + str(number+1) + ', Priority ' + str(item['priority']) + ': ')
+        formatted_item = json.dumps(item, indent=4)
         print(formatted_item)
 
     return 'Queue successfully printed.'
@@ -122,24 +125,36 @@ def queue_put():
     if data is None or not isinstance(data, dict):
         return 'Error, no valid data received.'
 
-    dfields = ['task', 'channel', 'md', 'sample_number', 'task_type', 'device']
+    # check for mandatory data fields
+    dfields = ['task', 'sample_number', 'task_type', 'device']
     if not set(dfields).issubset(data):
-        return 'Error, not all datafields provided.'
+        return 'Error, not all mandatory datafields provided.'
+
+    # add defaults for non-mandatory fields:
+    if 'md' not in data:
+        data['md'] = {}
+    if 'channel' not in data:
+        data['channel'] = None
+    if 'target_device' not in data:
+        data['target_device'] = None
+    if 'target_channel' not in data:
+        data['target_channel'] = None
 
     # put request in bluesky queue
-    bsa.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
-                  task_type=data['task_type'], device=data['device'])
+    dev_api.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
+                      task_type=data['task_type'], device=data['device'], target_device=data['target_device'],
+                      target_channel=data['target_channel'])
 
     return 'Request succesfully enqueued.'
 
 
-def start_server(host='0.0.0.0', port=5003):
+def start_server(host='0.0.0.0', port=5003, storage_path=None):
     def app_start():
         run_simple('localhost', port, app)
 
     # initialize bluesky API
-    global bsa
-    bsa = bluesky_api.autocontrol()
+    global dev_api
+    dev_api = device_api.autocontrol(storage_path=None)
 
     # start the background thread
     global bg_thread

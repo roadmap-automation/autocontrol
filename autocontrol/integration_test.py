@@ -1,7 +1,10 @@
 import json
+import multiprocessing
+import os
 import requests
 import server
 import socket
+import subprocess
 import time
 
 port = 5003
@@ -18,6 +21,11 @@ def print_queue():
     print('Waiting for 2 seconds.')
 
     time.sleep(2)
+
+
+def start_streamlit_viewer():
+    viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
+    result = subprocess.run(['streamlit', 'run', viewer_path])
 
 
 def submit_task(task):
@@ -41,12 +49,16 @@ def integration_test():
     print('\n')
 
     # ------------------ Starting Flask Server----------------------------------
+    print("Starting Flask Server")
+    server.start_server(host='localhost', port=port, storage_path='../test/')
 
-    server.start_server(host='localhost', port=port)
-
-    time.sleep(2)
     print('Waiting for 2 seconds.')
-    time.sleep(2)
+    time.sleep(5)
+
+    # ------------------ Starting Streamlit Monitor----------------------------------
+    print("Starting Streamlit Viewer")
+    process = multiprocessing.Process(target=start_streamlit_viewer)
+    process.start()
 
     # ------------------ Printing Queue ----------------------------------
 
