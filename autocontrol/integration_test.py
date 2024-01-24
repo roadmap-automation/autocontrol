@@ -19,10 +19,6 @@ def print_queue():
     data = json.dumps({})
     response = requests.get(url, headers=headers, data=data)
 
-    print('Waiting for 2 seconds.')
-
-    time.sleep(2)
-
 
 def start_streamlit_viewer():
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
@@ -36,9 +32,6 @@ def submit_task(task):
     headers = {'Content-Type': 'application/json'}
     data = json.dumps(task)
     response = requests.post(url, headers=headers, data=data)
-
-    print('Waiting for 2 seconds.')
-    time.sleep(2)
 
 
 def integration_test():
@@ -61,39 +54,48 @@ def integration_test():
     process = multiprocessing.Process(target=start_streamlit_viewer)
     process.start()
 
-    # ------------------ Printing Queue ----------------------------------
-
-    print_queue()
-
     # ------------------ Submitting Task ----------------------------------
-
     task = {
-        'task': {'description': 'test5'},
+        'task': {'description': 'QCMD init'},
         'sample_number': 1,
-        'channel': 0,
-        'md':  {
-            'favorite_color': 'red',
-            'favorite_actor': 'Mickey Mouse'
-        },
+        'channel': 1,
+        'md':  {},
         'task_type': 'init',
         'device': 'qcmd'
     }
     submit_task(task)
+    time.sleep(5)
 
-    # ------------------ Printing Queue ----------------------------------
+    task = {
+        'task': {'description': 'QCMD measurement'},
+        'sample_number': 1,
+        'channel': 1,
+        'md':  {},
+        'task_type': 'measure',
+        'device': 'qcmd'
+    }
+    submit_task(task)
+    time.sleep(5)
 
-    print_queue()
+    task = {
+        'task': {'description': 'QCMD measurement'},
+        'sample_number': 2,
+        'channel': 1,
+        'md':  {},
+        'task_type': 'measure',
+        'device': 'qcmd'
+    }
+    submit_task(task)
+    time.sleep(5)
 
     # ------------------ Stopping Flask Server ----------------------------------
-
     print('\n')
     print('Stopping Flask')
     url = 'http://localhost:' + str(port) + '/shutdown'
     headers = {'Content-Type': 'application/json'}
     data = json.dumps({'wait_for_queue_to_empty': True})
     response = requests.post(url, headers=headers, data=data)
-
-    time.sleep(2)
+    time.sleep(5)
 
     print('Integration test done.')
     print('Program exit.')

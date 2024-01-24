@@ -43,15 +43,8 @@ class open_QCMD:
             return status
 
         if task['task_type'] == 'measure':
-            # if QCMD is busy, do not start new measurement
-            status, rstring = self.communicate("get_status")
-            if status != Status.SUCCESS:
-                return Status.ERROR
-            if rstring != 'idle':
-                return Status.BUSY
-            else:
-                status = self.measure(task)
-                return status
+            status = self.measure(task)
+            return status
 
         return Status.INVALID
 
@@ -101,6 +94,10 @@ class open_QCMD:
         #  channel from task['channel']
         #  any other variables from the task['md] dictionary
         #  self.communicate can be used or modified for communiction with the qcmd device
+        # if QCMD is busy, do not start new measurement
+        status = self.get_device_status()
+        if status != Status.UP:
+            return Status.ERROR
         status = self.communicate("start")
         return Status.TODO
 

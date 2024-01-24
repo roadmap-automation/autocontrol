@@ -1,5 +1,4 @@
 import time
-import bluesky.preprocessors as bpp
 import math
 import os
 from QCMD_device import open_QCMD
@@ -172,7 +171,7 @@ class autocontrol:
                 execute_task = assign_channel('channel', free_channels, busy_channels, channel)
                 execute_task &= assign_channel('target_channel', free_target_channels, busy_target_channels,
                                                target_channel)
-            elif task['task_type'] == 'measurement':
+            elif task['task_type'] == 'measure':
                 execute_task = assign_channel('channel', free_channels, busy_channels, channel)
 
             return execute_task, task
@@ -188,7 +187,7 @@ class autocontrol:
             execute_task, task = process_init(task)
         elif task['task_type'] == 'shut down':
             execute_task, task = process_shutdown(task)
-        elif task['task_type' == 'exit']:
+        elif task['task_type'] == 'exit':
             # TODO: Implement. Ending main loop. Other clean up tasks?
             execute_task = False
         else:
@@ -254,6 +253,8 @@ class autocontrol:
         unsuccesful_jobs = []
         success = False
 
+        # TODO: Not sure that it is desired behavior that init tasks are executed before others irrespective of their
+        #   relative priority
         i = 0
         while i < len(task_priority):
             task_type = task_priority[i]
@@ -376,7 +377,7 @@ class autocontrol:
                     # TODO: Better exception handling for this critical case
                     print('Device {} not up.', task['device'])
                     time.sleep(10)
-                data = device.read(channel=task['channel'])
+                read_status, data = device.read(channel=task['channel'])
                 # append data to task
                 if 'md' not in task:
                     task['md'] = {}
@@ -385,4 +386,3 @@ class autocontrol:
             # move task to history
             self.active_tasks.remove(task)
             self.sample_history.put(task)
-

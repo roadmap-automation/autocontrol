@@ -239,6 +239,7 @@ class TaskContainer:
 
         serialized_task = json.dumps(task['task'])
         serialized_md = json.dumps(task['md'])
+
         query = """
             INSERT INTO task_table (
                 task, priority, sample_number, channel, md, task_type, device,

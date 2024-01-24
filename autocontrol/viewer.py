@@ -6,8 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from urllib.parse import urljoin
-
+identifier_list = []
 
 @st.cache_data
 def load_sql(filename):
@@ -38,10 +37,21 @@ def render_cluster(data, graph, name='0', color='grey'):
     with graph.subgraph(name='cluster_'+name) as c:
         c.attr(fillcolor=color, label=name, style='filled')
         c.attr('node', shape='box', style='filled', fillcolor='grey')
+        identifier = name[0]
+        if identifier in identifier_list:
+            i = 2
+            while True:
+                modified_identifier = identifier + str(i)
+                if modified_identifier not in identifier_list:
+                    identifier = modified_identifier
+                    break
+                i += 1
+        identifier_list.append(identifier)
+
         for index, row in data[::-1].iterrows():
             c.node(
-                'ID:' + str(row['id']) + ', Sample ' + str(row['sample_number']) + ',\n' + row['task_type'] + ' ' +
-                row['device'] + '(' + str(row['channel']) + ')')
+                identifier + ':' + str(row['id']) + ', Sample ' + str(row['sample_number']) + ',\n' + row['task_type']
+                + ' ' + row['device'] + '(' + str(row['channel']) + ')')
 
 
 g = graphviz.Graph('gvg')
