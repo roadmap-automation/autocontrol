@@ -1,12 +1,16 @@
 import json
-import time
 import requests
+import time as ttime
+
 from status import Status
 
 
-class open_QCMD:
+class lh_device:
+    """
+    This class implements a liquid handler device interface for autocontrol.
+    """
 
-    def __init__(self, name="Open QCMD", address=None):
+    def __init__(self, name="liquid handler", address=None):
         self.name = name
         self.address = address
         self.number_of_channels = 1
@@ -17,7 +21,7 @@ class open_QCMD:
 
     def communicate(self, command, value=0):
         """
-        Communicate with QCM-D instrument and return response.
+        Communicate with liquid handler and return response.
 
         :param command: HTTP POST request command field
         :param value: HTTP POST request value field
@@ -42,8 +46,12 @@ class open_QCMD:
             status = self.init(task)
             return status
 
-        if task['task_type'] == 'measure':
-            status = self.measure(task)
+        if task['task_type'] == 'prepare':
+            status = self.prepare(task)
+            return status
+
+        if task['task_type'] == 'transfer':
+            status = self.transfer(task)
             return status
 
         return Status.INVALID
@@ -72,8 +80,18 @@ class open_QCMD:
         return Status.TODO
 
     def init(self, task):
+        self.channel_mode = None
+
         if self.test:
-            self.number_of_channels = task['channel']
+            if 'number_of_channels'in task['task']:
+                noc = task['task']['number_of_channels']
+                if noc is None or noc < 2:
+                    noc = 1
+                else:
+                    noc = int(noc)
+            else:
+                noc = 1
+            self.number_of_channels = noc
             return Status.SUCCESS
 
         # TODO: Implement device initialization
@@ -85,49 +103,43 @@ class open_QCMD:
         self.channel_mode = task['channel_mode']
         return Status.TODO
 
-    def measure(self, task):
+    def prepare(self, task):
         if self.test:
-            time.sleep(5)
+            ttime.sleep(5)
             return Status.SUCCESS
 
-        # TODO: Implement measurement start
-        #  channel from task['channel']
-        #  any other variables from the task['md] dictionary
+        # TODO: Implement prepare
+        #  channel to store preparation from task['channel']
+        #  any other variables including recipe from the task['md] dictionary
         #  self.communicate can be used or modified for communiction with the qcmd device
-        # if QCMD is busy, do not start new measurement
+        #  make sure to mark the channel of task['device'] as busy during operation
+
+        # if liquid handler is busy, do not start new measurement
         status = self.get_device_status()
         if status != Status.UP:
             return Status.ERROR
         status = self.communicate("start")
         return Status.TODO
 
-    def read(self, channel=None):
-        """
-        Establishes an HTTP connection to the QCMD Qt app and retrieves the current data. With the current thinking, it
-        is the entire data set collected since start. Thereby, qcmd_read should be called only once after stopping the
-        run.
-
-        :return: QCMD data as a dictionary
-        """
-
-        # single-tone dummy data for null returns
-        ddict = {
-            'time': [0., 10., 20., 30.],
-            'frequency': [0., -1., -2., -3.],
-            'dissipation': [100., 200., 300., 400.],
-            'temperature': [300., 300., 300., 300.]
-        }
-
+    def transfer(self, task):
         if self.test:
-            return Status.SUCCESS, ddict
+            ttime.sleep(5)
+            return Status.SUCCESS
 
-        status1 = self.communicate("stop")
-        rdict = self.communicate("get_data")
-        if rdict is None:
-            rdict = ddict
+        # TODO: Implement transfer
+        #  channel from task['channel']
+        #  target channel from task['target_channel']
+        #  any other variables from the task['md] dictionary
+        #  self.communicate can be used or modified for communiction with the qcmd device
+        #  make sure to mark the channel of task['device'] and target channel of task['target_device'] as busy during
+        #  operation
 
-        return Status.SUCCESS, rdict
+        # TODO: How does one best mark the target channel as busy as it resides in a different device?
+        #   -> discuss with David
 
-
-if __name__ == '__main__':
-    open_QCMD1 = open_QCMD(name="Open QCMD", address="http://localhost:5011/QCMD/")
+        # if liquid handler is busy, do not start new measurement
+        status = self.get_device_status()
+        if status != Status.UP:
+            return Status.ERROR
+        status = self.communicate("start")
+        return Status.TODO

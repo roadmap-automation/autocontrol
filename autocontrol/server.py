@@ -1,4 +1,4 @@
-import device_api
+import autocontrol
 from flask import Flask
 from flask import request
 import json
@@ -11,7 +11,7 @@ app = Flask(__name__)
 # shutdown signal
 app_shutdown = False
 # intialize global variables
-dev_api: Optional[device_api.autocontrol] = None
+atc: Optional[autocontrol.autocontrol] = None
 bg_thread: Optional[Thread] = None
 
 
@@ -22,12 +22,11 @@ def background_task():
     """
     while not app_shutdown:
         # check on all active tasks and handle if they are finished
-        dev_api.update_active_tasks()
-
+        atc.update_active_tasks()
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
-        dev_api.queue_execute_one_item()
+        atc.queue_execute_one_item()
         # sleep for some time before
         time.sleep(10)
 
@@ -44,7 +43,7 @@ def shutdown_server(wait_for_queue_to_empty=False):
     # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
 
     while wait_for_queue_to_empty:
-        if dev_api.queue.empty() and dev_api.active_tasks.empty():
+        if atc.queue.empty() and atc.active_tasks.empty():
             break
         time.sleep(10)
 
@@ -79,7 +78,7 @@ def queue_inspect():
     Retrieves all queue items without removing them from the queue and prints them in the terminal.
     :return: (str) status
     """
-    queue_items = dev_api.queue_inspect()
+    queue_items = atc.queue_inspect()
     print('Inspecting queue...')
     print('Received {} queued items.'.format(len(queue_items)))
     for number, item in enumerate(queue_items):
@@ -141,9 +140,9 @@ def queue_put():
         data['target_channel'] = None
 
     # put request in bluesky queue
-    dev_api.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
-                      task_type=data['task_type'], device=data['device'], target_device=data['target_device'],
-                      target_channel=data['target_channel'])
+    atc.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
+                  task_type=data['task_type'], device=data['device'], target_device=data['target_device'],
+                  target_channel=data['target_channel'])
 
     return 'Request succesfully enqueued.'
 
@@ -153,8 +152,8 @@ def start_server(host='0.0.0.0', port=5003, storage_path=None):
         run_simple('localhost', port, app)
 
     # initialize bluesky API
-    global dev_api
-    dev_api = device_api.autocontrol(storage_path=None)
+    global atc
+    atc = autocontrol.autocontrol(storage_path=None)
 
     # start the background thread
     global bg_thread

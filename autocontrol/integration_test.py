@@ -27,7 +27,8 @@ def start_streamlit_viewer():
 
 def submit_task(task):
     print('\n')
-    print('Submitting Task')
+    print('Submitting Task: ' + task['device'] + ' ' + task['task_type'] + 'Sample: ' + str(task['sample_number']) +
+          '\n')
     url = 'http://localhost:' + str(port) + '/put'
     headers = {'Content-Type': 'application/json'}
     data = json.dumps(task)
@@ -37,14 +38,28 @@ def submit_task(task):
 def integration_test():
     print('Starting integration test')
 
+    print('Preparing test directory')
+    storage_path = '../test/'
+    for filename in os.listdir(storage_path):
+        file_path = os.path.join(storage_path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            print(f'Failed to delete {file_path}. Reason: {e}')
+
     hostname = socket.gethostname()
-    IPAddr = socket.gethostbyname(hostname)
-    print("The IP address of your machine is:", IPAddr)
-    print('\n')
+    try:
+        IPAddr = socket.gethostbyname(hostname)
+        print(f"IP Address of {hostname} is {IPAddr}")
+    except socket.gaierror:
+        print(f"Could not resolve hostname: {hostname}. Check your network settings.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
     # ------------------ Starting Flask Server----------------------------------
     print("Starting Flask Server")
-    server.start_server(host='localhost', port=port, storage_path='../test/')
+    server.start_server(host='localhost', port=port, storage_path=storage_path)
 
     print('Waiting for 2 seconds.')
     time.sleep(5)
@@ -56,9 +71,10 @@ def integration_test():
 
     # ------------------ Submitting Task ----------------------------------
     task = {
-        'task': {'description': 'QCMD init'},
-        'sample_number': 1,
-        'channel': 1,
+        'task': {'description': 'QCMD init',
+                 'number_of_channels': 1},
+        'sample_number': 0,
+        'channel': None,
         'md':  {},
         'task_type': 'init',
         'device': 'qcmd'
@@ -67,9 +83,69 @@ def integration_test():
     time.sleep(5)
 
     task = {
+        'task': {'description': 'lh init',
+                 'number_of_channels': 10},
+        'sample_number': 0,
+        'channel': None,
+        'md':  {},
+        'task_type': 'init',
+        'device': 'lh'
+    }
+    submit_task(task)
+    time.sleep(5)
+
+    task = {
+        'task': {'description': 'Sample1 preparation'},
+        'sample_number': 1,
+        'channel': None,
+        'md':  {},
+        'task_type': 'prepare',
+        'device': 'lh'
+    }
+    submit_task(task)
+    time.sleep(5)
+
+    task = {
+        'task': {'description': 'Sample2 preparation'},
+        'sample_number': 2,
+        'channel': None,
+        'md':  {},
+        'task_type': 'prepare',
+        'device': 'lh'
+    }
+    submit_task(task)
+    time.sleep(5)
+
+    task = {
+        'task': {'description': 'Sample1 transfer'},
+        'sample_number': 1,
+        'channel': None,
+        'md':  {},
+        'task_type': 'transfer',
+        'device': 'lh',
+        'target_channel': None,
+        'target_device': 'qcmd'
+    }
+    submit_task(task)
+    time.sleep(5)
+
+    task = {
+        'task': {'description': 'Sample2 transfer'},
+        'sample_number': 2,
+        'channel': None,
+        'md':  {},
+        'task_type': 'transfer',
+        'device': 'lh',
+        'target_channel': None,
+        'target_device': 'qcmd'
+    }
+    submit_task(task)
+    time.sleep(5)
+
+    task = {
         'task': {'description': 'QCMD measurement'},
         'sample_number': 1,
-        'channel': 1,
+        'channel': None,
         'md':  {},
         'task_type': 'measure',
         'device': 'qcmd'
@@ -80,7 +156,7 @@ def integration_test():
     task = {
         'task': {'description': 'QCMD measurement'},
         'sample_number': 2,
-        'channel': 1,
+        'channel': None,
         'md':  {},
         'task_type': 'measure',
         'device': 'qcmd'
@@ -101,7 +177,7 @@ def integration_test():
     print('Program exit.')
 
     # Wait for user input
-    user_input = input("Please enter some text and press Enter to stop all process: ")
+    user_input = input("Please enter some text and press Enter to stop all processes: ")
 
 
 if __name__ == '__main__':

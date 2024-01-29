@@ -10,8 +10,8 @@ from bluesky.callbacks import LiveTable
 from databroker import Broker
 
 # from ophyd.sim import det1, det2  # two simulated detectors
-from QCMD_device import open_QCMD
-from liquid_handler_device import lh_device
+from device_qcmd import open_QCMD
+from device_liquid_handler import lh_device
 
 if __name__ == "__main__":
     RE = RunEngine({})

@@ -5,7 +5,7 @@ import threading
 
 class TaskContainer:
     """
-    A simple storage and retrieval class for tasks used in device_api.py based on SQLite.
+    A simple storage and retrieval class for tasks used in autocontrol.py based on SQLite.
     """
     def __init__(self, db_path=':memory:'):
         """
@@ -66,12 +66,13 @@ class TaskContainer:
         conn.close()
         self.lock.release()
 
-    def find_channels_for_sample_number_and_device(self, task):
+    def find_channels_per_device(self, task, sample=True):
         """
         Find the channel of any stored task of this sample on this device and any target channels of
         transfers of this sample to other devices. Only one channel and target channel are returned (for applications
         that will reuse those channels).
-        :param task:
+        :param task: (task_container) the reference task
+        :param sample: (bool) only consider the channels that were used by the same sample (number)
         :return: (tuple) Found channel and target channel.
         """
 
@@ -81,13 +82,23 @@ class TaskContainer:
 
         # seach for any task of this sample on this device and prioritize results of task type transfer
         # this way, if there is a transfer task with a defined target channel, it will be retrieved
-        query = """
-        SELECT channel, target_channel FROM task_table
-        WHERE (device = ? AND sample_number = ?)
-        ORDER BY CASE WHEN task_type = 'transfer' THEN 1 ELSE 2 END
-        LIMIT 1
-        """
-        cursor.execute(query, (task['device'], task['sample_number']))
+        if sample:
+            query = """
+            SELECT channel, target_channel FROM task_table
+            WHERE (device = ? AND sample_number = ?)
+            ORDER BY CASE WHEN task_type = 'transfer' THEN 1 ELSE 2 END
+            LIMIT 1
+            """
+            cursor.execute(query, (task['device'], task['sample_number']))
+        else:
+            query = """
+            SELECT channel, target_channel FROM task_table
+            WHERE (device = ?)
+            ORDER BY CASE WHEN task_type = 'transfer' THEN 1 ELSE 2 END
+            LIMIT 1
+            """
+            cursor.execute(query, (task['device']))
+
         result = cursor.fetchone()
 
         if result is not None:
