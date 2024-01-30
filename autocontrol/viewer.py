@@ -141,10 +141,11 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
 
 
 @st.cache_data
-def render_all_queues(pdata, adata, hdata, edges, filemodflag):
+def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag):
     render_data(pdata, color='lightblue', filename='priority_queue')
     render_data(adata, color='lightgreen', filename='active_queue', split_by_device=True, edges=edges)
     render_data(hdata, color='orange', filename='history_queue')
+    render_data(cpodata, color='lightgreen', filename='cpo_data', split_by_device=True, edges=edges)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # --------------------------------------------- Streamlit Page Start --------------------------------------------------
@@ -156,15 +157,26 @@ storage_path = '../test/'
 file_mod_date = file_mod_time()
 if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
     priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time())
-    render_all_queues(priority_queue, active_queue, history_queue, edges, file_mod_time())
+    channel_po_data = []
+    for key in channel_po:
+        for channel, entry in enumerate(channel_po[key]):
+            if entry is not None:
+                channel_po_data.append(entry)
+                entry['channel'] = channel
+                entry['device'] = key
+    channel_po_data = pd.DataFrame(channel_po_data)
+    render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges, file_mod_time())
 
 st.title('Autocontrol Viewer')
 
 # create flow chart via graphviz
-st.text('Flow Chart')
+st.text('Task Diagram')
 st.image(os.path.join(storage_path, 'priority_queue.png'))
 st.image(os.path.join(storage_path, 'active_queue.png'))
 st.image(os.path.join(storage_path, 'history_queue.png'))
+
+st.text('Sample Occupancy Diagram')
+st.image(os.path.join(storage_path, 'cpo_data.png'))
 
 # visualize dataframes in tables
 co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel", "md")
