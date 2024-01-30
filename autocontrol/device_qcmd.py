@@ -1,52 +1,14 @@
+from device import Device
 import json
 import time
 import requests
 from status import Status
 
 
-class open_QCMD:
+class open_QCMD(Device):
 
     def __init__(self, name="Open QCMD", address=None):
-        self.name = name
-        self.address = address
-        self.number_of_channels = 1
-        self.channel_mode = None
-
-        # hard-coded test flag
-        self.test = True
-
-    def communicate(self, command, value=0):
-        """
-        Communicate with QCM-D instrument and return response.
-
-        :param command: HTTP POST request command field
-        :param value: HTTP POST request value field
-        :return: response from HTTP POST or None if failed
-        """
-        if self.address is None:
-            return Status.INVALID, None
-        cmdstr = '{"command": "' + str(command) + '", "value": ' + str(value) + '}'
-        try:
-            r = requests.post(self.address, cmdstr)
-        except requests.exceptions.RequestException:
-            return Status.ERROR, None
-        if r.status_code != 200:
-            return Status.ERROR, None
-
-        rdict = json.loads(r.text)
-        response = rdict['result']
-        return Status.SUCCESS, response
-
-    def execute_task(self, task):
-        if task['task_type'] == 'init':
-            status = self.init(task)
-            return status
-
-        if task['task_type'] == 'measure':
-            status = self.measure(task)
-            return status
-
-        return Status.INVALID
+        super().__init__(name, address)
 
     def get_channel_status(self, channel):
         """
@@ -100,14 +62,13 @@ class open_QCMD:
             time.sleep(5)
             return Status.SUCCESS
 
-        # TODO: Implement measurement start
-        #  channel from task['channel']
-        #  any other variables from the task['md] dictionary
-        #  self.communicate can be used or modified for communiction with the qcmd device
+        # TODO: Implement measurement -> see documentation
         # if QCMD is busy, do not start new measurement
         status = self.get_device_status()
         if status != Status.UP:
             return Status.ERROR
+        if task['task']['acquisition_time'] is not None:
+            acquisition_time = float(task['task']['acquisition_time'])
         status = self.communicate("start")
         return Status.TODO
 

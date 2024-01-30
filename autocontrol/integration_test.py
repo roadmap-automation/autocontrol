@@ -130,7 +130,9 @@ def integration_test():
     time.sleep(5)
 
     task = {
-        'task': {'description': 'Sample2 transfer'},
+        'task': {'description': 'Sample2 transfer',
+                 'force': True
+                 },
         'sample_number': 2,
         'channel': None,
         'md':  {},

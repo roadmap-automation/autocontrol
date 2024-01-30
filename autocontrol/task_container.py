@@ -159,6 +159,61 @@ class TaskContainer:
 
         return list(channels), list(target_channels)
 
+    def find_interference(self, task):
+        """
+        Checks if a task is interfering with an existing task on the same (target) device and (target) channel.
+        :param task: (json) task to check
+        :return: (bool) True if task is interfering
+        """
+
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        retvalue = False
+
+        if task['channel'] is not None:
+            query = """
+            SELECT channel FROM task_table
+            WHERE device = ?
+            """
+            cursor.execute(query, (task['device'], ))
+            results = cursor.fetchall()
+            channels = set()
+            for element in results:
+                channels.add(element['channel'])
+            if task['channel'] in channels:
+                retvalue = True
+
+        if task['target_channel'] is not None:
+            query = """
+            SELECT target_channel FROM task_table
+            WHERE device = ?
+            """
+            cursor.execute(query, (task['target_device'], ))
+            results = cursor.fetchall()
+            channels = set()
+            for element in results:
+                channels.add(element['target_channel'])
+            if task['target_channel'] in channels:
+                retvalue = True
+
+            query = """
+            SELECT channel FROM task_table
+            WHERE device = ?
+            """
+            cursor.execute(query, (task['target_device'], ))
+            results = cursor.fetchall()
+            channels = set()
+            for element in results:
+                channels.add(element['channel'])
+            if task['target_channel'] in channels:
+                retvalue = True
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
     def get_all(self):
         """
         Retrieves all items from the container.

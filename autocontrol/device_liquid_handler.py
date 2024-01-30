@@ -1,3 +1,4 @@
+from device import Device
 import json
 import requests
 import time as ttime
@@ -5,56 +6,13 @@ import time as ttime
 from status import Status
 
 
-class lh_device:
+class lh_device(Device):
     """
     This class implements a liquid handler device interface for autocontrol.
     """
 
     def __init__(self, name="liquid handler", address=None):
-        self.name = name
-        self.address = address
-        self.number_of_channels = 1
-        self.channel_mode = None
-
-        # hard-coded test flag
-        self.test = True
-
-    def communicate(self, command, value=0):
-        """
-        Communicate with liquid handler and return response.
-
-        :param command: HTTP POST request command field
-        :param value: HTTP POST request value field
-        :return: response from HTTP POST or None if failed
-        """
-        if self.address is None:
-            return Status.INVALID, None
-        cmdstr = '{"command": "' + str(command) + '", "value": ' + str(value) + '}'
-        try:
-            r = requests.post(self.address, cmdstr)
-        except requests.exceptions.RequestException:
-            return Status.ERROR, None
-        if r.status_code != 200:
-            return Status.ERROR, None
-
-        rdict = json.loads(r.text)
-        response = rdict['result']
-        return Status.SUCCESS, response
-
-    def execute_task(self, task):
-        if task['task_type'] == 'init':
-            status = self.init(task)
-            return status
-
-        if task['task_type'] == 'prepare':
-            status = self.prepare(task)
-            return status
-
-        if task['task_type'] == 'transfer':
-            status = self.transfer(task)
-            return status
-
-        return Status.INVALID
+        super().__init__(name, address)
 
     def get_channel_status(self, channel):
         """
@@ -94,10 +52,7 @@ class lh_device:
             self.number_of_channels = noc
             return Status.SUCCESS
 
-        # TODO: Implement device initialization
-        #  number of channels from task['channel']
-        #  any other variables from the task['task'] dictionary
-        #  self.communicate can be used or modified for communication with the qcmd device
+        # TODO: Implement device initialization -> see documentation
         self.address = task['device_address']
         self.number_of_channels = task['channel']
         self.channel_mode = task['channel_mode']
@@ -108,11 +63,7 @@ class lh_device:
             ttime.sleep(5)
             return Status.SUCCESS
 
-        # TODO: Implement prepare
-        #  channel to store preparation from task['channel']
-        #  any other variables including recipe from the task['md] dictionary
-        #  self.communicate can be used or modified for communiction with the qcmd device
-        #  make sure to mark the channel of task['device'] as busy during operation
+        # TODO: Implement prepare -> see documentation
 
         # if liquid handler is busy, do not start new measurement
         status = self.get_device_status()
@@ -126,14 +77,7 @@ class lh_device:
             ttime.sleep(5)
             return Status.SUCCESS
 
-        # TODO: Implement transfer
-        #  channel from task['channel']
-        #  target channel from task['target_channel']
-        #  any other variables from the task['md] dictionary
-        #  self.communicate can be used or modified for communiction with the qcmd device
-        #  make sure to mark the channel of task['device'] and target channel of task['target_device'] as busy during
-        #  operation
-
+        # TODO: Implement transfer -> see documentation
         # TODO: How does one best mark the target channel as busy as it resides in a different device?
         #   -> discuss with David
 
