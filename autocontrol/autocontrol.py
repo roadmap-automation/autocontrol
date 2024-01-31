@@ -146,7 +146,7 @@ class autocontrol:
         return ret, task, resp
 
     def process_shutdown(self, task):
-        # TODO: Implement waiting for all active tasks to finish
+        # TODO: Implement waiting for all active tasks to finish and shut down device
         return True, task, "Success."
 
     def process_measure(self, task):
@@ -180,6 +180,10 @@ class autocontrol:
             if cpol[task['channel']]['sample_number'] != sample_number:
                 return False, task, 'Wrong sample in measurement channel.'
 
+        return True, task, "Success."
+
+    def process_no_channel(self, task):
+        # currently no conditions to test
         return True, task, "Success."
 
     def process_prepare(self, task):
@@ -249,14 +253,32 @@ class autocontrol:
         if 'force' not in task['task']:
             task['task']['force'] = False
         force = task['task']['force']
+        # add non-channel source if not present
+        if 'non_channel_source' not in task['task']:
+            task['task']['non_channel_source'] = None
+        # add non-channel target if not present
+        if 'non_channel_target' not in task['task']:
+            task['task']['non_channel_target'] = None
+
+        # check for consistency between non-channel and channel transfers:
+        if task['task']['non_channel_source'] is not None and task['task']['channel'] is not None:
+            return False, task, 'Source channel and non-channel source simultaneously provided.'
+        if task['task']['non_channel_target'] is not None and task['task']['target_channel'] is not None:
+            return False, task, 'Target channel and non-channel target simultaneously provided.'
 
         cpol = self.channel_po[task['device']]
         target_cpol = self.channel_po[task['target_device']]
         sample_number = task['sample_number']
 
-        if task['channel'] is None:
-            # Source channel is not defined. Locate the sample based on sample number. If there are multiple,
-            # transfer the one with the highest priority.
+        if task['channel'] is not None:
+            # check if manual channel selection is valid
+            if not (0 <= task['channel'] < len(self.channel_po[task['device']])):
+                return False, task, 'Invalid channel.'
+            if cpol[task['channel']]['sample_number'] != sample_number:
+                return False, task, 'Wrong sample in source channel.'
+        elif task['task']['non_channel_source'] is None:
+            # Source channel is not defined. Find a source channel. Locate the sample based on sample number. If there
+            # are multiple, transfer the one with the highest priority.
             best_channel = None
             for i, channel_task in enumerate(cpol):
                 if channel_task is not None and channel_task['sample_number'] == sample_number:
@@ -265,12 +287,10 @@ class autocontrol:
             if best_channel is None:
                 return False, task, 'Did not find the sample to transfer.'
             task['channel'] = best_channel
-        else:
-            # check if manual channel selection is valid
-            if not (0 <= task['channel'] < len(self.channel_po[task['device']])):
-                return False, task, 'Invalid channel.'
-            if cpol[task['channel']]['sample_number'] != sample_number:
-                return False, task, 'Wrong sample in source channel.'
+
+        if task['task']['non_channel_target'] is not None:
+            # no need to identify target channel
+            return True, task, 'Success.'
 
         target_device = self.get_device_object(task['target_device'])
         channel_mode = target_device.channel_mode
@@ -347,21 +367,27 @@ class autocontrol:
 
         if device is None:
             return False, task, 'Unknown device.'
-
-        if task['task_type'] == 'init':
+        elif task['task_type'] == 'init':
             execute_task, task, resp = self.process_init(task)
+        elif device.get_device_status() is not Status.UP:
+            # check if device is DOWN or unable to accept a task because it is BUSY or for other reasons
+            # init is an exception as this task puts the device in operation
+            return False, task, 'Device is down or busy.'
         elif task['task_type'] == 'shut down':
             execute_task, task, resp = self.process_shutdown(task)
-        elif task['task_type'] == 'exit':
-            # TODO: Implement. Ending main loop. Other clean up tasks?
-            execute_task = False
-            resp = 'Exit task not implemented.'
         elif task['task_type'] == 'transfer':
+            target_device = self.get_device_object(task['device'])
+            if target_device is None:
+                return False, task, 'Unknown target device.'
+            if target_device.get_device_status() is not Status.UP:
+                return False, task, 'Target device is down or busy.'
             execute_task, task, resp = self.process_transfer(task)
         elif task['task_type'] == 'prepare':
             execute_task, task, resp = self.process_prepare(task)
         elif task['task_type'] == 'measure':
             execute_task, task, resp = self.process_measure(task)
+        elif task['task_type'] == 'no_channel':
+            execute_task, task, resp = self.process_no_channel(task)
         else:
             return False, task, 'Unknown task type.'
 
@@ -369,14 +395,14 @@ class autocontrol:
         # another layer of protection against cases in which are not caught by checks on the physical and operational
         # channel occupancies. Those checks can fail if the same sample is already present in a channel from a previous
         # step, although it (a new volume with the same sample number) is currently being transferred, or for starting
-        # a measurement on a device and channel while there is a measurement still going on. It is also necessary since
-        # we currently have no way of setting the target channel of a transfer to busy.
-        if self.active_tasks.find_interference(task):
-            execute_task = None
+        # a measurement on a device and channel while there is a measurement still going on. It is also important for
+        # transfer tasks to passive devices, which will not report on their channel activity or device status due to the
+        # task.
+        if execute_task and self.active_tasks.find_interference(task):
+            execute_task = False
             resp = 'Waiting for ongoing task at (target) device and (target) channel to finish.'
 
         if execute_task:
-            # TODO: Implement in plan and API: device shutdown and exit
             # Note: Every task execution including measurements only sends a signal to the device and do not wait for
             # completion. Results are collected separately during self.update_active_tasks(). This allows for parallel
             # tasks.
@@ -387,6 +413,13 @@ class autocontrol:
             task['md']['execution_start_time'] = time.gmtime(time.time())
 
             status = device.execute_task(task=task)
+            if task['task_type'] == 'transfer' and device != target_device:
+                # a transfer task is active on the source and target device, reserving respective channels
+                status &= target_device.execute_task(task=task)
+
+            # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
+            #   in a transfer is returning a non-success status.
+
             if status == Status.SUCCESS:
                 # store every task that is executed active tasks
                 task['md']['response'] = resp
@@ -412,9 +445,9 @@ class autocontrol:
         Logic:
         Tasks in the queue are discriminated by their priority and task type. Priority is a combined quantity of sample
         number and task submission time, giving higher priorities to lower sample numbers and earlier submission times.
-        Task types are prioritized from high to low as: 'init', ('prepare', 'transfer', 'measure'), 'shut down', and
-        'exit'. After the highest priority task that can be executed given the availability of resources, the method
-        terminates and returns a status string. 'Shut down' and 'exit' tasks are only executed if no tasks of higher
+        Task types are prioritized from high to low as: 'init', ('prepare', 'transfer', 'measure'),and 'shut down'.
+        After the highest priority task that can be executed given the availability of resources, the method
+        terminates and returns a status string. The 'shut down' task is only executed if no tasks of higher
         priority are in the queue. 'Prepare', 'transfer', and 'measure' task are of the same priority, as they might be
         used in different order and multiple times on any given sample. The order of those tasks for the same sample
         is only determined by their submission time to the queue.
@@ -424,7 +457,7 @@ class autocontrol:
 
         # The parallel execution of tasks makes it difficult to re-initialize an instrument during a run. A not perfect
         # implementation is to give the 'init' task a higher priority than the rest.
-        task_priority = [['init'], ['prepare', 'transfer', 'measure'],  ['exit'], ['shut down']]
+        task_priority = [['init'], ['prepare', 'transfer', 'measure', 'no_channel'],  ['shut down']]
         response = ''
         blocked_samples = []
         unsuccesful_jobs = []
@@ -479,7 +512,6 @@ class autocontrol:
                             'transfer' for sample transfer
                             'measure' for measurement.
                             'shut down' for instrument shut down
-                            'exit' for ending main loop
         :param device: Measurement device, one of the following: 'LH': liquid handler
                                                                  'QCMD': QCMD
                                                                  'NR': neutron reflectometer
@@ -488,7 +520,6 @@ class autocontrol:
         :return: no return value
         """
 
-        # TODO: Add time stamps at various points during processing
         # create a priority value with the following importance
         # 1. Sample number
         # 2. Time that step was submitted
@@ -526,8 +557,6 @@ class autocontrol:
         :return: no return value
         """
 
-        # TODO: incorporate acquisition time
-
         task_list = self.active_tasks.get_all()
 
         for task in task_list:
@@ -544,17 +573,20 @@ class autocontrol:
                 if channel_status == Status.BUSY:
                     # task not done
                     continue
-                # Disabled the following lines because we are not setting transfer channels to busy. Instead, we monitor
-                # if there are still active tasks using this channel using self.active_tasks. The tasks becomes inactive
-                # once the source channel goes idle, and the task will be subsequently collected.
-                '''
-                if task['target_channel'] is not None:
-                    target_device = self.get_device_object(task['target_device'])
-                    target_channel_status = target_device.get_channel_status(task['target_channel'])
-                    if target_channel_status == Status.BUSY:
-                        # task not done
-                        continue
-                '''
+
+            # Test if target channel is still busy. Not all tasks will set a target channel to busy.
+            if task['target_channel'] is not None:
+                target_device = self.get_device_object(task['target_device'])
+                target_channel_status = target_device.get_channel_status(task['target_channel'])
+                if target_channel_status == Status.BUSY:
+                    # task not done
+                    continue
+            elif task['task_type'] == 'transfer':
+                # target channel-less transfer task
+                status = device.get_device_status()
+                if status != Status.UP:
+                    # device is not ready to accept new commands and therefore, the current one is not finished
+                    continue
 
             # task is ready for collection
 

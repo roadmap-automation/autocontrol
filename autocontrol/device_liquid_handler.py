@@ -29,7 +29,7 @@ class lh_device(Device):
     def get_device_status(self):
         """
         Retrieves the status of a device independent of its channels
-        :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID
+        :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID, Status.BUSY
         """
         if self.test:
             return Status.UP
@@ -58,6 +58,20 @@ class lh_device(Device):
         self.channel_mode = task['channel_mode']
         return Status.TODO
 
+    def no_channel(self, task):
+        if self.test:
+            ttime.sleep(5)
+            return Status.SUCCESS
+
+        # TODO: Implement a channel-less task -> see documentation
+        #   Make sure to set the entire device to BUSY during task execution and back to UP when done.
+
+        status = self.get_device_status()
+        if status != Status.UP:
+            return Status.ERROR
+
+        return Status.TODO
+
     def prepare(self, task):
         if self.test:
             ttime.sleep(5)
@@ -78,12 +92,26 @@ class lh_device(Device):
             return Status.SUCCESS
 
         # TODO: Implement transfer -> see documentation
-        # TODO: How does one best mark the target channel as busy as it resides in a different device?
-        #   -> discuss with David
+        #   Do not forget to mark the source or target channel as busy for a channel-based transfer
+        #   Mark the entire device as busy for a non-channel based transfer
 
         # if liquid handler is busy, do not start new measurement
         status = self.get_device_status()
         if status != Status.UP:
             return Status.ERROR
+
+        if task['device'] == self.name:
+            # this device is the source device of the transfer (not exclusive)
+            if task['task']['non_channel_source'] is not None:
+                # we transfer from a non-channel source
+                pass
+        if task['target_device'] == self.name:
+            # this device is the target device of the transfer (not exclusive)
+            if task['task']['non_channel_target'] is not None:
+                # we transfer to a non-channel target
+                pass
+        else:
+            return Status.INVALID
+
         status = self.communicate("start")
         return Status.TODO

@@ -166,6 +166,17 @@ def integration_test():
     submit_task(task)
     time.sleep(5)
 
+    task = {
+        'task': {'description': 'LH rinse'},
+        'sample_number': 1,
+        'channel': None,
+        'md':  {},
+        'task_type': 'no_channel',
+        'device': 'lh'
+    }
+    submit_task(task)
+    time.sleep(5)
+
     # ------------------ Stopping Flask Server ----------------------------------
     print('\n')
     print('Stopping Flask')

@@ -57,6 +57,10 @@ class Device(object):
             status = self.transfer(task)
             return status
 
+        if task['task_type'] == 'no_channel':
+            status = self.no_channel(task)
+            return status
+
         return Status.INVALID
 
     def get_channel_status(self, channel):
@@ -78,6 +82,9 @@ class Device(object):
         return Status.INVALID
 
     def measure(self, task):
+        return Status.INVALID
+
+    def no_channel(self, task):
         return Status.INVALID
 
     def prepare(self, task):

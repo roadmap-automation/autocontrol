@@ -1,6 +1,6 @@
 from device import Device
 import json
-import time
+import time as ttime
 import requests
 from status import Status
 
@@ -59,7 +59,7 @@ class open_QCMD(Device):
 
     def measure(self, task):
         if self.test:
-            time.sleep(5)
+            ttime.sleep(5)
             return Status.SUCCESS
 
         # TODO: Implement measurement -> see documentation
@@ -70,6 +70,20 @@ class open_QCMD(Device):
         if task['task']['acquisition_time'] is not None:
             acquisition_time = float(task['task']['acquisition_time'])
         status = self.communicate("start")
+        return Status.TODO
+
+    def no_channel(self, task):
+        if self.test:
+            ttime.sleep(5)
+            return Status.SUCCESS
+
+        # TODO: Implement a channel-less task -> see documentation
+        #   Make sure to set the entire device to BUSY during task execution and back to UP when done.
+
+        status = self.get_device_status()
+        if status != Status.UP:
+            return Status.ERROR
+
         return Status.TODO
 
     def read(self, channel=None):
@@ -98,6 +112,14 @@ class open_QCMD(Device):
             rdict = ddict
 
         return Status.SUCCESS, rdict
+
+    def transfer(self, task):
+        if self.test:
+            ttime.sleep(5)
+            return Status.SUCCESS
+
+        # The QCMD is a passive device concering transfer. There is no effect of a transfer on any status variable.
+        return Status.SUCCESS
 
 
 if __name__ == '__main__':

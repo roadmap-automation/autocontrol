@@ -1,4 +1,6 @@
 import datetime
+import math
+
 import graphviz
 import json
 import os
@@ -78,37 +80,34 @@ def load_json(filename):
 
 
 def render_cluster(data, graph, name='0', color='grey'):
+    def create_uuid(id_first_node, id_last_node):
+        # find unique node id
+        while True:
+            idstr = str(uuid.uuid4())
+            if idstr not in identifier_list:
+                identifier_list.append(idstr)
+                break
+        if id_first_node is None:
+            id_first_node = idstr
+        id_last_node = idstr
+        return idstr, id_first_node, id_last_node
+
     id_first_node = None
     id_last_node = None
     with graph.subgraph(name='cluster_'+name) as c:
         c.attr(fillcolor=color, label=name, style='filled')
         c.attr('node', shape='box', style='filled', fillcolor='grey')
-        identifier = name[0]
-        if identifier in identifier_list:
-            i = 2
-            while True:
-                modified_identifier = identifier + str(i)
-                if modified_identifier not in identifier_list:
-                    identifier = modified_identifier
-                    break
-                i += 1
-        identifier_list.append(identifier)
 
-        if data is not None:
+        if data is not None and not data.empty:
             for index, row in data[::-1].iterrows():
-                if id_first_node is None:
-                    id_first_node = name+str(row['id'])
-                id_last_node = name+str(row['id'])
-                c.node(
-                    name+str(row['id']),
-                    label=identifier + str(row['id']) + ', Sample ' + str(row['sample_number']) + ',\n' +
-                          row['task_type'] + ' ' + row['device'] + '(' + str(row['channel']) + ')'
-                )
+                idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
+                if row['channel'] is not None and not math.isnan(row['channel']):
+                    label = 'S' + str(row['sample_number']) + ' C' + str(int(row['channel'])) + '\n' + row['task_type']
+                else:
+                    label = 'S' + str(row['sample_number']) + '\n' + row['task_type']
+                c.node(idstr, label=label)
         else:
-            idstr = str(uuid.uuid4())
-            if id_first_node is None:
-                id_first_node = idstr
-            id_last_node = idstr
+            idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
             c.node(idstr, label=' ', style='invisible')
 
     return id_first_node, id_last_node
@@ -128,8 +127,8 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
         for device in grouped.groups:
             device_df = grouped.get_group(device)
             # st.dataframe(device_df)
-            first, last = render_cluster(device_df, g, name=device_df.at[0, 'device'], color='lightgreen')
-            edge_nodes[device_df.at[0, 'device']] = [first, last]
+            first, last = render_cluster(device_df, g, name=device, color='lightgreen')
+            edge_nodes[device] = [first, last]
         for entry in edges:
             # draw edge from last to first node in the two clusters that should be connected given in the
             # edges dictionary
@@ -164,7 +163,10 @@ if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'
                 channel_po_data.append(entry)
                 entry['channel'] = channel
                 entry['device'] = key
-    channel_po_data = pd.DataFrame(channel_po_data)
+    if channel_po_data:
+        channel_po_data = pd.DataFrame(channel_po_data)
+    else:
+        channel_po_data = pd.DataFrame(columns=priority_queue.columns)
     render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges, file_mod_time())
 
 st.title('Autocontrol Viewer')
