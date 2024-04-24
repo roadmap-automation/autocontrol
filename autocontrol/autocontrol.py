@@ -71,6 +71,9 @@ class autocontrol:
         # currently executed preparations and measurements
         self.active_tasks = TaskContainer(db_path_active)
 
+        # highest sample number in use
+        self.highest_sample_number = None
+
         # channel physical occupation
         # for each device there will be a list in this dictionary with the device name as the key. Each list has as many
         # entries as channels. Each entry is either None for not occupied, or it contains the task object last executed
@@ -492,33 +495,24 @@ class autocontrol:
 
         return response
 
-    def queue_put(self, task=None, channel=None, md=None, sample_number=None, task_type='prepare',
-                  device=None, target_device=None, target_channel=None):
+    def queue_put(self, task):
         """
-        Puts an item into the priority queue, which is of a certain task type.
+        Puts a task into the priority queue.
 
-        Notes based on task type:
-
-        init: If channel field is not None, it sets up the device with the number of channels given in this data field.
-        measurement: If channel is None, then the channel is selected automatically.
-
-        :param task: (dict) A description of the sample that can be passed to the LH or potentially stored as md.
-        :param channel: (int) which measurement channel to use.
-        :param md: (dict) Any metadata to attach to the run.
-        :param sample_number: (int) Sample number for current Bluesky run. The lower, the higher the priority.
-        :param task_type: (str) Distinguishes between
-                            'init' for instrument initialization
-                            'prepare' for sample preparation
-                            'transfer' for sample transfer
-                            'measure' for measurement.
-                            'shut down' for instrument shut down
-        :param device: Measurement device, one of the following: 'LH': liquid handler
-                                                                 'QCMD': QCMD
-                                                                 'NR': neutron reflectometer
-        :param target_device: for task_type transfer, designates the target device
-        :param target_channel: for task_type transfer, designates the target channel
+        :param task: (task.Task) The task.
         :return: no return value
         """
+
+        if self.highest_sample_number is None:
+            # TODO create data base query for recovery
+            self.highest_sample_number = 0
+
+        if task.sample_number is None:
+            # create a sample number if none present
+            task.sample_number = self.highest_sample_number + 1
+        else:
+            if task.sample_number > self.highest_sample_number:
+                self.highest_sample_number = task.sample_number
 
         # create a priority value with the following importance
         # 1. Sample number
@@ -526,22 +520,10 @@ class autocontrol:
         # convert time to a priority <1
         p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
         # convert sample number to priority, always overriding start time.
-        priority = sample_number * (-1.)
+        priority = task.sample_number * (-1.)
         priority -= p1
 
-        item = {
-            'task': task,
-            'sample_number': sample_number,
-            'channel': channel,
-            'md': md,
-            'task_type': task_type,
-            'device': device,
-            'priority': priority,
-            'target_device': target_device,
-            'target_channel': target_channel
-        }
-
-        self.queue.put(item)
+        self.queue.put(task)
 
     def store_channel_po(self):
         """

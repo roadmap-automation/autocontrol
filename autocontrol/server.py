@@ -2,8 +2,10 @@ import autocontrol
 from flask import Flask
 from flask import request
 import json
+from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
+from task import Task
 import time
 from werkzeug.serving import run_simple
 
@@ -124,25 +126,14 @@ def queue_put():
     if data is None or not isinstance(data, dict):
         return 'Error, no valid data received.'
 
-    # check for mandatory data fields
-    dfields = ['task', 'sample_number', 'task_type', 'device']
-    if not set(dfields).issubset(data):
-        return 'Error, not all mandatory datafields provided.'
-
-    # add defaults for non-mandatory fields:
-    if 'md' not in data:
-        data['md'] = {}
-    if 'channel' not in data:
-        data['channel'] = None
-    if 'target_device' not in data:
-        data['target_device'] = None
-    if 'target_channel' not in data:
-        data['target_channel'] = None
-
-    # put request in bluesky queue
-    atc.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
-                  task_type=data['task_type'], device=data['device'], target_device=data['target_device'],
-                  target_channel=data['target_channel'])
+    # de-serialize the task data into a Task object
+    try:
+        task = Task(**data)
+        # put request in bluesky queue
+        atc.queue_put(task=task)
+    except ValidationError as e:
+        print("Failed to deserialize:", e)
+        return 'Failed to submit task'
 
     return 'Request succesfully enqueued.'
 

@@ -79,8 +79,8 @@ def load_json(filename):
     return data
 
 
-def render_cluster(data, graph, name='0', color='grey'):
-    def create_uuid(id_first_node, id_last_node):
+def render_cluster(data, graph, name='0', color='grey', show_device=False):
+    def create_uuid(id_first_node):
         # find unique node id
         while True:
             idstr = str(uuid.uuid4())
@@ -100,14 +100,16 @@ def render_cluster(data, graph, name='0', color='grey'):
 
         if data is not None and not data.empty:
             for index, row in data[::-1].iterrows():
-                idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
+                idstr, id_first_node, id_last_node = create_uuid(id_first_node)
                 if row['channel'] is not None and not math.isnan(row['channel']):
                     label = 'S' + str(row['sample_number']) + ' C' + str(int(row['channel'])) + '\n' + row['task_type']
                 else:
                     label = 'S' + str(row['sample_number']) + '\n' + row['task_type']
+                if show_device:
+                    label += '\n' + row['device']
                 c.node(idstr, label=label)
         else:
-            idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
+            idstr, id_first_node, id_last_node = create_uuid(id_first_node)
             c.node(idstr, label=' ', style='invisible')
 
     return id_first_node, id_last_node
@@ -135,7 +137,7 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
             if entry[0] in edge_nodes and entry[1] in edge_nodes:
                 g.edge(edge_nodes[entry[0]][1], edge_nodes[entry[1]][0])
     else:
-        render_cluster(data, g, name=filename, color=color)
+        render_cluster(data, g, name=filename, color=color, show_device=True)
     g.render(filename=os.path.join(storage_path, filename), format='png')
 
 
@@ -181,9 +183,10 @@ st.text('Sample Occupancy Diagram')
 st.image(os.path.join(storage_path, 'cpo_data.png'))
 
 # visualize dataframes in tables
-co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel", "md")
+co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel",
+           "task", "md")
 co_conf = {"sample_number": "sample",
-                            "task_type": "task",
+                            "task_type": "task type",
                             "md": "meta data",
                             "target_device": "target device",
                             "target_channel": "target channel"
