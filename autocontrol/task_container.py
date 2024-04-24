@@ -2,6 +2,8 @@ import json
 import sqlite3
 import threading
 
+import task
+
 
 class TaskContainer:
     """
@@ -48,6 +50,8 @@ class TaskContainer:
         create_table_sql = """
             CREATE TABLE IF NOT EXISTS task_table (
                 id INTEGER PRIMARY KEY,
+                task_id CHAR(36),
+                sample_id CHAR(36),
                 priority REAL,
                 sample_number INTEGER,
                 device TEXT,
@@ -55,8 +59,7 @@ class TaskContainer:
                 channel INTEGER,
                 task TEXT,
                 target_channel INTEGER,
-                target_device TEXT,
-                md TEXT
+                target_device TEXT
             )
         """
         cursor.execute(create_table_sql)
@@ -233,10 +236,9 @@ class TaskContainer:
             desc = cursor.description
             column_names = [col[0] for col in desc]
             data = [dict(zip(column_names, row)) for row in result]
-            result = data
-            for entry in result:
-                entry['task'] = json.loads(entry['task'])
-                entry['md'] = json.loads(entry['md'])
+            result = []
+            for entry in data:
+                result.append(task.deserialize_task_data(**entry))
 
         cursor.close()
         conn.close()
@@ -279,9 +281,7 @@ class TaskContainer:
             desc = cursor.description
             column_names = [col[0] for col in desc]
             data = dict(zip(column_names, result))
-            result = data
-            result['task'] = json.loads(result['task'])
-            result['md'] = json.loads(result['md'])
+            result = task.deserialize_task_data(**data)
 
             cursor.execute("DELETE FROM task_table WHERE id=:id", {'id': result['id']})
             conn.commit()
@@ -303,19 +303,19 @@ class TaskContainer:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        serialized_task = json.dumps(task['task'])
-        serialized_md = json.dumps(task['md'])
+        # serialize the entire object and save it extracting some parameters of immediate interest to autocontrol
+        serialized_task = task.json()
 
         query = """
             INSERT INTO task_table (
-                task, priority, sample_number, channel, md, task_type, device,
-                target_channel, target_device
+                task, task_id, sample_id, priority, sample_number, channel, task_type, device, target_channel, 
+                target_device
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         cursor.execute(query, (
-            serialized_task, task['priority'], task['sample_number'], task['channel'], serialized_md,
-            task['task_type'], task['device'], task['target_channel'], task['target_device']
+            serialized_task, task.id, task.sample_id, task.priority, task.sample_number, task.tasks[0].channel,
+            task.task_type, task.device, task.tasks[-1].target_channel, task.tasks[-1].target_device
         ))
         conn.commit()
 

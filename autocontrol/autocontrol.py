@@ -72,7 +72,7 @@ class autocontrol:
         self.active_tasks = TaskContainer(db_path_active)
 
         # highest sample number in use
-        self.highest_sample_number = None
+        self.sample_id_to_number = {}
 
         # channel physical occupation
         # for each device there will be a list in this dictionary with the device name as the key. Each list has as many
@@ -503,16 +503,20 @@ class autocontrol:
         :return: no return value
         """
 
-        if self.highest_sample_number is None:
-            # TODO create data base query for recovery
-            self.highest_sample_number = 0
-
+        # Assign a sample number with regard to the submitted sample id. Check if the sample id has been submitted
+        # before.
         if task.sample_number is None:
             # create a sample number if none present
-            task.sample_number = self.highest_sample_number + 1
-        else:
-            if task.sample_number > self.highest_sample_number:
-                self.highest_sample_number = task.sample_number
+            if not self.sample_id_to_number:
+                task.sample_number = 1
+                self.sample_id_to_number[task.sample_id] = task.sample_number
+            else:
+                if task.sample_id in self.sample_id_to_number:
+                    task.sample_number = self.sample_id_to_number[task.sample_id]
+                else:
+                    max_key = max(self.sample_id_to_number, key=self.sample_id_to_number.get)
+                    task.sample_number = self.sample_id_to_number[max_key]
+                    self.sample_id_to_number[task.sample_id] = task.sample_number
 
         # create a priority value with the following importance
         # 1. Sample number
@@ -522,6 +526,7 @@ class autocontrol:
         # convert sample number to priority, always overriding start time.
         priority = task.sample_number * (-1.)
         priority -= p1
+        task.priority = priority
 
         self.queue.put(task)
 

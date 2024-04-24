@@ -33,6 +33,7 @@ class InitTaskData(TaskData):
     task_type = TaskType.INIT
     device_address: str = None
     channel_mode: Optional[int] = None
+    number_of_channels: int = 1
 
 
 class MeasureTaskData(TaskData):
@@ -47,8 +48,11 @@ class PrepareTaskData(TaskData):
 class TransferTaskData(TaskData):
     task_type = TaskType.TRANSFER
     force: bool = False
+    # not sure whether those are needed, this information also could be part of the transfer method
     target_device: Optional[str] = None
     target_channel: Optional[int] = None
+    source_device: Optional[str] = None
+    source_channel: Optional[int] = None
     non_channel_source: Optional[str] = None
     non_channel_target: Optional[str] = None
 
@@ -89,7 +93,7 @@ class Task(BaseModel):
     of all previous tasks acting on this particular sub-sample
     """
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    sample_id: Optional[uuid.UUID] = None
+    sample_id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4)
     priority: Optional[float] = None
     sample_number: Optional[int] = None
     tasks: List[TaskData] = Field(default_factory=list)

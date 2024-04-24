@@ -97,24 +97,12 @@ def queue_put():
     POST request function that puts one task onto the Bluesky priorty queue.
 
     The POST data must contain the following data fields:
-    'task':                 (dict) A dictionary describing the task to be executed by the instrument. This field will be
-                            passed on to the instrument API.
-    'sample_number':        (int) An ascending sample ID.
-    'channel':              (int) Channel to be used in case parallel measurements are supported.
-    'md':                   (dict) Metadata to be saved with the measurement data.
-    'task_type':            (str) A generic label for different types of tasks affecting how they are prioritized.
-                            Options:
-                            'init', 'prepare', 'transfer', 'measure', 'shut down', 'exit'
-    'device':               (str) Name of the device executing the task.
-
-    For transfer tasks, additionally the following data fields are required:
-    'target_device':        (str) The name of the device the materialed is transferred to;
-    'target_channel':       (int) The channel on the target device to be used, auto-select if None.
+    'task':  (task.Task) The task.
 
     The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
     The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
     sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
-    tasks.
+    tasks. Sample numbers are derived from the sample_id upon first submission
 
     :return: Status string.
     """
@@ -129,7 +117,7 @@ def queue_put():
     # de-serialize the task data into a Task object
     try:
         task = Task(**data)
-        # put request in bluesky queue
+        # put request in autocontrol queue
         atc.queue_put(task=task)
     except ValidationError as e:
         print("Failed to deserialize:", e)
