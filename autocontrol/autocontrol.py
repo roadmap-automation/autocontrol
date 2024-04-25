@@ -459,6 +459,50 @@ class autocontrol:
 
         return execute_task, task, resp
 
+    def post_process_task(self, task):
+        """
+        Post-processes and cleans up a task that has been finished.
+        :param task: The task (task.Task)
+        :return: no return value
+        """
+        device = self.get_device_object(task.tasks[0].device)
+        if task.task_type == TaskType.INIT:
+            # create an empty channel physical occupancy entry for the device (False == not occupied)
+            noc = device.number_of_channels
+            self.channel_po[task.tasks[0].device] = [None] * noc
+
+        elif task.task_type == TaskType.MEASURE:
+            # get measurment data
+            while device.get_device_status() != Status.UP:
+                # Wait for device to become available to retrieve data. This is for catching an instrument
+                # exception and not for waiting for the measurement to finish. This is done with ocupational channel
+                # states above.
+                # TODO: Better exception handling for this critical case
+                print('Device {} not up.', task.tasks[0].device)
+                time.sleep(10)
+            read_status, data = device.read(channel=task.tasks[0].channel)
+            # append data to task
+            if 'md' not in task:
+                task['md'] = {}
+            task.tasks[0].md['measurement_data'] = data
+            # Attach measurement task to the physical occupancy list
+            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
+
+        elif task.task_type == TaskType.PREPARE:
+            # attach current task to the channel physical occupancy
+            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
+
+        elif task.task_type == TaskType.TRANSFER:
+            # remove existing task from the source channel physical occupancy
+            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = None
+            # attach current task to the target channel physical occupancy
+            self.channel_po[task.tasks[-1].device][task.tasks[-1].channel] = task
+
+        # move task to history and save new channel physical occupancy
+        self.active_tasks.remove(task)
+        self.sample_history.put(task)
+        self.store_channel_po()
+
     def queue_inspect(self):
         """
         Returns the items of the queue in a list without removing them from the queue.
@@ -570,47 +614,8 @@ class autocontrol:
         post-processing steps.
         :return: no return value
         """
-
         task_list = self.active_tasks.get_all()
         for task in task_list:
-            if not self.check_task(task):
-                continue
-
-            # task is ready for collection
-            device = self.get_device_object(task.tasks[0].device)
-            if task.task_type == TaskType.INIT:
-                # create an empty channel physical occupancy entry for the device (False == not occupied)
-                noc = device.number_of_channels
-                self.channel_po[task.tasks[0].device] = [None] * noc
-
-            elif task.task_type == TaskType.MEASURE:
-                # get measurment data
-                while device.get_device_status() != Status.UP:
-                    # Wait for device to become available to retrieve data. This is for catching an instrument
-                    # exception and not for waiting for the measurement to finish. This is done with ocupational channel
-                    # states above.
-                    # TODO: Better exception handling for this critical case
-                    print('Device {} not up.', task.tasks[0].device)
-                    time.sleep(10)
-                read_status, data = device.read(channel=task.tasks[0].channel)
-                # append data to task
-                if 'md' not in task:
-                    task['md'] = {}
-                task.tasks[0].md['measurement_data'] = data
-                # Attach measurement task to the physical occupancy list
-                self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
-
-            elif task.task_type == TaskType.PREPARE:
-                # attach current task to the channel physical occupancy
-                self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
-
-            elif task.task_type == TaskType.TRANSFER:
-                # remove existing task from the source channel physical occupancy
-                self.channel_po[task.tasks[0].device][task.tasks[0].channel] = None
-                # attach current task to the target channel physical occupancy
-                self.channel_po[task.tasks[-1].device][task.tasks[-1].channel] = task
-
-            # move task to history and save new channel physical occupancy
-            self.active_tasks.remove(task)
-            self.sample_history.put(task)
-            self.store_channel_po()
+            if self.check_task(task):
+                # task is ready for collection
+                self.post_process_task(task)
