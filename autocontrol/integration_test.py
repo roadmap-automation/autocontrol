@@ -29,7 +29,7 @@ def start_streamlit_viewer():
 
 def submit_task(task):
     print('\n')
-    print('Submitting Task: ' + task.device + ' ' + task.task_type + 'Sample: ' + str(task.sample_it) + '\n')
+    print('Submitting Task: ' + task.tasks[0].device + ' ' + task.task_type + 'Sample: ' + str(task.sample_id) + '\n')
     url = 'http://localhost:' + str(port) + '/put'
     headers = {'Content-Type': 'application/json'}
     data = task.json()
@@ -75,7 +75,7 @@ def integration_test():
 
     task = tsk.Task(
         task_type=tsk.TaskType('init'),
-        tasks=[tsk.InitTaskData(
+        tasks=[tsk.TaskData(
             device='qcmd',
             number_of_channels=1,
             md={'description': 'QCMD init'}
@@ -86,7 +86,7 @@ def integration_test():
 
     task = tsk.Task(
         task_type=tsk.TaskType('init'),
-        tasks=[tsk.InitTaskData(
+        tasks=[tsk.TaskData(
             device='lh',
             number_of_channels=10,
             md={'description': 'lh init'}
@@ -99,7 +99,7 @@ def integration_test():
     task = tsk.Task(
         sample_id=sample_id1,
         task_type=tsk.TaskType('prepare'),
-        tasks=[tsk.PrepareTaskData(
+        tasks=[tsk.TaskData(
             device='lh',
             md={'description': 'Sample1 preparation'}
         )]
@@ -111,7 +111,7 @@ def integration_test():
     task = tsk.Task(
         sample_id=sample_id2,
         task_type=tsk.TaskType('prepare'),
-        tasks=[tsk.PrepareTaskData(
+        tasks=[tsk.TaskData(
             device='lh',
             md={'description': 'Sample2 preparation'}
         )]
@@ -123,12 +123,12 @@ def integration_test():
         sample_id=sample_id1,
         task_type=tsk.TaskType('transfer'),
         tasks=[
-            tsk.TransferTaskData(
+            tsk.TaskData(
                 device='lh',
                 target_device='qcmd',
                 md={'description': 'Sample1 transfer'}
             ),
-            tsk.TransferTaskData(
+            tsk.TaskData(
                 device='qcmd',
                 source_device='lh',
                 md={'description': 'Sample1 transfer'}
@@ -142,12 +142,12 @@ def integration_test():
         sample_id=sample_id2,
         task_type=tsk.TaskType('transfer'),
         tasks=[
-            tsk.TransferTaskData(
+            tsk.TaskData(
                 device='lh',
                 target_device='qcmd',
                 md={'description': 'Sample2 transfer'}
             ),
-            tsk.TransferTaskData(
+            tsk.TaskData(
                 device='qcmd',
                 source_device='lh',
                 md={'description': 'Sample2 transfer'}
@@ -160,7 +160,7 @@ def integration_test():
     task = tsk.Task(
         sample_id=sample_id1,
         task_type=tsk.TaskType('measure'),
-        tasks=[tsk.MeasureTaskData(
+        tasks=[tsk.TaskData(
             device='qcmd',
             md={'description': 'QCMD measurement sample1'}
         )]
@@ -171,7 +171,7 @@ def integration_test():
     task = tsk.Task(
         sample_id=sample_id2,
         task_type=tsk.TaskType('measure'),
-        tasks=[tsk.MeasureTaskData(
+        tasks=[tsk.TaskData(
             device='qcmd',
             md={'description': 'QCMD measurement sample2'}
         )]
@@ -182,7 +182,7 @@ def integration_test():
     task = tsk.Task(
         sample_id=sample_id1,
         task_type=tsk.TaskType('nochannel'),
-        tasks=[tsk.MeasureTaskData(
+        tasks=[tsk.TaskData(
             device='lh',
             md={'description': 'lh rinse'}
         )]

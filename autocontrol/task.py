@@ -1,4 +1,5 @@
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, field_validator, Field, field_serializer
+import pydantic
 from typing import Type, Optional, List
 from enum import Enum
 import uuid
@@ -22,31 +23,14 @@ class TaskData(BaseModel):
     is stored per sub-task and will be later aggregated.
     """
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    task_type = TaskType.NONE
     device: str = ''
     channel: Optional[int] = None
     method_data: Optional[dict] = Field(default_factory=dict)
     md: Optional[dict] = Field(default_factory=dict)
-
-
-class InitTaskData(TaskData):
-    task_type = TaskType.INIT
-    device_address: str = None
+    device_address: Optional[str] = None
     channel_mode: Optional[int] = None
     number_of_channels: int = 1
-
-
-class MeasureTaskData(TaskData):
-    task_type = TaskType.MEASURE
     acquisition_time: Optional[float] = None
-
-
-class PrepareTaskData(TaskData):
-    task_type = TaskType.PREPARE
-
-
-class TransferTaskData(TaskData):
-    task_type = TaskType.TRANSFER
     force: bool = False
     # not sure whether those are needed, this information also could be part of the transfer method
     target_device: Optional[str] = None
@@ -56,33 +40,7 @@ class TransferTaskData(TaskData):
     non_channel_source: Optional[str] = None
     non_channel_target: Optional[str] = None
 
-
-class NochannelTaskData(TaskData):
-    task_type = TaskType.NOCHANNEL
-
-
-class ShutdownTaskData(TaskData):
-    task_type = TaskType.SHUTDOWN
     wait_for_queue_to_empty: bool = True
-
-
-# Function to determine the class to instantiate based on task_type
-def get_task_data_class(task_type: TaskType) -> Type[TaskData]:
-    return {
-        TaskType.INIT: InitTaskData,
-        TaskType.MEASURE: MeasureTaskData,
-        TaskType.PREPARE: PrepareTaskData,
-        TaskType.TRANSFER: TransferTaskData,
-        TaskType.SHUTDOWN: ShutdownTaskData,
-        TaskType.NOCHANNEL: NochannelTaskData,
-    }.get(task_type, TaskData)  # Default to base TaskData if type is unknown
-
-
-# Deserialize task data
-def deserialize_task_data(data: dict) -> TaskData:
-    task_type = TaskType(data.get('task_type'))
-    task_class = get_task_data_class(task_type)
-    return task_class(**data)
 
 
 class Task(BaseModel):
@@ -99,11 +57,3 @@ class Task(BaseModel):
     tasks: List[TaskData] = Field(default_factory=list)
     task_type: TaskType
     task_history: List[uuid.UUID] = Field(default_factory=list)
-
-    # modifying the de-serializatioin parser to deal with the derived classes from TaskData
-    @field_validator('tasks')
-    def parse_tasks(cls, v, values, config, field):
-        if isinstance(v, dict):
-            return deserialize_task_data(v)
-        return v  # This is just in case, should not generally happen in this use case.
-

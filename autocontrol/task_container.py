@@ -50,8 +50,8 @@ class TaskContainer:
         create_table_sql = """
             CREATE TABLE IF NOT EXISTS task_table (
                 id INTEGER PRIMARY KEY,
-                task_id CHAR(36),
-                sample_id CHAR(36),
+                task_id TEXT,
+                sample_id TEXT,
                 priority REAL,
                 sample_number INTEGER,
                 device TEXT,
@@ -308,14 +308,14 @@ class TaskContainer:
 
         query = """
             INSERT INTO task_table (
-                task, task_id, sample_id, priority, sample_number, channel, task_type, device, target_channel, 
+                task, priority, task_id, sample_id, sample_number, channel, task_type, device, target_channel, 
                 target_device
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         cursor.execute(query, (
-            serialized_task, task.id, task.sample_id, task.priority, task.sample_number, task.tasks[0].channel,
-            task.task_type, task.device, task.tasks[-1].target_channel, task.tasks[-1].target_device
+            serialized_task, task.priority, str(task.id), str(task.sample_id), task.sample_number, task.tasks[0].channel,
+            task.task_type, task.tasks[0].device, task.tasks[-1].target_channel, task.tasks[-1].target_device
         ))
         conn.commit()
 
