@@ -238,7 +238,8 @@ class TaskContainer:
             data = [dict(zip(column_names, row)) for row in result]
             result = []
             for entry in data:
-                result.append(task.deserialize_task_data(**entry))
+                # deserialize tasks and append to results list
+                result.append(task.Task(**entry))
 
         cursor.close()
         conn.close()
@@ -306,6 +307,8 @@ class TaskContainer:
         # serialize the entire object and save it extracting some parameters of immediate interest to autocontrol
         serialized_task = task.json()
 
+        # The target channel and device are endpoints of a multistep transfer. Autocontrol is not currently not
+        # concerned with assigning channels for intermediate devices.
         query = """
             INSERT INTO task_table (
                 task, priority, task_id, sample_id, sample_number, channel, task_type, device, target_channel, 
@@ -314,8 +317,8 @@ class TaskContainer:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         cursor.execute(query, (
-            serialized_task, task.priority, str(task.id), str(task.sample_id), task.sample_number, task.tasks[0].channel,
-            task.task_type, task.tasks[0].device, task.tasks[-1].target_channel, task.tasks[-1].target_device
+            serialized_task, task.priority, str(task.id), str(task.sample_id), task.sample_number,
+            task.tasks[0].channel, task.task_type, task.tasks[0].device, task.tasks[-1].channel, task.tasks[-1].device
         ))
         conn.commit()
 

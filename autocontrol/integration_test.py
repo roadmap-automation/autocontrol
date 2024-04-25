@@ -125,12 +125,10 @@ def integration_test():
         tasks=[
             tsk.TaskData(
                 device='lh',
-                target_device='qcmd',
                 md={'description': 'Sample1 transfer'}
             ),
             tsk.TaskData(
                 device='qcmd',
-                source_device='lh',
                 md={'description': 'Sample1 transfer'}
             )
         ]
@@ -144,12 +142,10 @@ def integration_test():
         tasks=[
             tsk.TaskData(
                 device='lh',
-                target_device='qcmd',
                 md={'description': 'Sample2 transfer'}
             ),
             tsk.TaskData(
                 device='qcmd',
-                source_device='lh',
                 md={'description': 'Sample2 transfer'}
             )
         ]

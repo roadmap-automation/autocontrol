@@ -24,7 +24,7 @@ def background_task():
     """
     while not app_shutdown:
         # check on all active tasks and handle if they are finished
-        # # atc.update_active_tasks()
+        atc.update_active_tasks()
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.

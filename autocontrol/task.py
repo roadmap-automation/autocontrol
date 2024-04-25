@@ -22,24 +22,29 @@ class TaskData(BaseModel):
     of the task. Autocontrol will route the method_data without change to the device. Metadata
     is stored per sub-task and will be later aggregated.
     """
+    # Note: I decided against an earlier implementation to subclass TaskData because I found it difficult to come
+    # up with easy and legible implementations of such subclasses in autocontrol. That might be revisited in future.
+
+    # general fields
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     device: str = ''
     channel: Optional[int] = None
     method_data: Optional[dict] = Field(default_factory=dict)
     md: Optional[dict] = Field(default_factory=dict)
+
+    # for init tasks
     device_address: Optional[str] = None
     channel_mode: Optional[int] = None
     number_of_channels: int = 1
-    acquisition_time: Optional[float] = None
-    force: bool = False
-    # not sure whether those are needed, this information also could be part of the transfer method
-    target_device: Optional[str] = None
-    target_channel: Optional[int] = None
-    source_device: Optional[str] = None
-    source_channel: Optional[int] = None
-    non_channel_source: Optional[str] = None
-    non_channel_target: Optional[str] = None
 
+    # for measurement tasks
+    acquisition_time: Optional[float] = None
+
+    # for transfer tasks
+    force: bool = False
+    non_channel_storage: Optional[str] = None
+
+    # for shutdown tasks
     wait_for_queue_to_empty: bool = True
 
 
