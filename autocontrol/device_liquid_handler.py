@@ -1,6 +1,4 @@
 from device import Device
-import json
-import requests
 import time as ttime
 
 from status import Status
@@ -37,12 +35,15 @@ class lh_device(Device):
         # TODO: Implement for device
         return Status.TODO
 
-    def init(self, task):
-        self.channel_mode = None
+    def init(self, subtask):
+        # TODO: Implement device initialization -> see documentation
+        self.address = subtask.device_address
+        self.number_of_channels = subtask.number_of_channels
+        self.channel_mode = subtask.channel_mode
 
         if self.test:
-            if 'number_of_channels'in task['task']:
-                noc = task['task']['number_of_channels']
+            if subtask.number_of_channels is not None:
+                noc = subtask.number_of_channels
                 if noc is None or noc < 2:
                     noc = 1
                 else:
@@ -52,13 +53,9 @@ class lh_device(Device):
             self.number_of_channels = noc
             return Status.SUCCESS
 
-        # TODO: Implement device initialization -> see documentation
-        self.address = task['device_address']
-        self.number_of_channels = task['channel']
-        self.channel_mode = task['channel_mode']
         return Status.TODO
 
-    def no_channel(self, task):
+    def no_channel(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS
@@ -72,7 +69,7 @@ class lh_device(Device):
 
         return Status.TODO
 
-    def prepare(self, task):
+    def prepare(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS
@@ -83,10 +80,10 @@ class lh_device(Device):
         status = self.get_device_status()
         if status != Status.UP:
             return Status.ERROR
-        status = self.communicate("start")
+        # status = self.communicate("start")
         return Status.TODO
 
-    def transfer(self, task):
+    def transfer(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS
@@ -100,18 +97,4 @@ class lh_device(Device):
         if status != Status.UP:
             return Status.ERROR
 
-        if task['device'] == self.name:
-            # this device is the source device of the transfer (not exclusive)
-            if task['task']['non_channel_source'] is not None:
-                # we transfer from a non-channel source
-                pass
-        if task['target_device'] == self.name:
-            # this device is the target device of the transfer (not exclusive)
-            if task['task']['non_channel_target'] is not None:
-                # we transfer to a non-channel target
-                pass
-        else:
-            return Status.INVALID
-
-        status = self.communicate("start")
         return Status.TODO

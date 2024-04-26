@@ -30,7 +30,7 @@ class TaskData(BaseModel):
     device: str = ''
     channel: Optional[int] = None
     method_data: Optional[dict] = Field(default_factory=dict)
-    md: Optional[dict] = Field(default_factory=dict)
+    md: dict = Field(default_factory=dict)
 
     # for init tasks
     device_address: Optional[str] = None
@@ -41,7 +41,6 @@ class TaskData(BaseModel):
     acquisition_time: Optional[float] = None
 
     # for transfer tasks
-    force: bool = False
     non_channel_storage: Optional[str] = None
 
     # for shutdown tasks
@@ -56,9 +55,11 @@ class Task(BaseModel):
     of all previous tasks acting on this particular sub-sample
     """
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    sample_id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4)
+    md: dict = Field(default_factory=dict)
     priority: Optional[float] = None
+    sample_id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4)
     sample_number: Optional[int] = None
     tasks: List[TaskData] = Field(default_factory=list)
-    task_type: TaskType
     task_history: List[uuid.UUID] = Field(default_factory=list)
+    task_type: TaskType
+

@@ -4,9 +4,10 @@ import math
 import os
 from device_qcmd import open_QCMD
 from task_container import TaskContainer
-from task import TaskType
+from task_type import TaskType
 from device_liquid_handler import lh_device
 from status import Status
+
 
 def generate_new_dict_key(base_key, dictionary):
     """
@@ -46,7 +47,7 @@ def merge_dict(dict1=None, dict2=None):
 
 
 class autocontrol:
-    def __init__(self, num_meas_channels=1, storage_path=None):
+    def __init__(self, storage_path=None):
 
         # accepts only sample preparations
         self.prepare_only = False
@@ -105,6 +106,57 @@ class autocontrol:
         # passed all tests, task has been finished
         return True
 
+    def find_free_channels(self, subtask, sample_number):
+        """
+        Finds and allocates a free channel for a subtask, respecting the channel selection logic of the device
+        :param subtask: the subtask (tasks.TaskData)
+        :param sample_number: the sample number (int)
+        :return: success flag, task, response (bool, task.TaskData, str)
+        """
+
+        device = self.get_device_object(subtask.device)
+        channel_mode = device.channel_mode
+        free_channels, _ = self.get_channel_occupancy(subtask.device)
+        # TODO: Add force implementation
+
+        if not free_channels:
+            return False, subtask, 'No free channels available.'
+
+        if channel_mode is None:
+            subtask.channel = free_channels[0]
+            return True, subtask, "Success."
+
+        # Find previous channel and target channel for this sample and device, the same channels will be reused
+        hist_channel = self.sample_history.find_channels(sample_number, subtask.device)
+        act_channel = self.active_tasks.find_channels(sample_number, subtask.device)
+        hist_channel = list(set(hist_channel + act_channel))
+
+        if channel_mode == 'reuse':
+            if not hist_channel:
+                subtask.channel = free_channels[0]
+            else:
+                success = False
+                for channel in hist_channel:
+                    if channel in free_channels:
+                        subtask.channel = channel
+                        success = True
+                        break
+                if not success:
+                    return False, subtask, 'Previously used channel is not free.'
+        elif channel_mode == 'new':
+            success = False
+            for channel in free_channels:
+                if channel not in hist_channel:
+                    subtask.channel = channel
+                    success = True
+                    break
+            if not success:
+                return False, subtask, 'No free unused channels.'
+        else:
+            return False, subtask, 'Invalid channel mode.'
+
+        return True, subtask, "Success."
+
     def get_channel_occupancy(self, devicename):
         """
         Obtains the channel occupancy from the active tasks (operational occupancy) and the channel physical occupancy
@@ -142,235 +194,138 @@ class autocontrol:
 
         return device
 
-    def get_channel_information_from_active_tasks(self, devicename):
+    def get_channel_information_from_active_tasks(self, device_name):
         """
         Helper function that checks the active tasklist for channels that are in use for a particular device.
-        :param devicename: device name for which the channel availability will be checked
+        :param device_name: device name for which the channel availability will be checked
         :return: tuple, list of free_channels, busy_channels
         """
 
-        device = self.get_device_object(devicename)
+        device = self.get_device_object(device_name)
         # find in-use channels based on stored active tasks
-        busy_channels, _ = self.active_tasks.find_channels_for_device(devicename)
+        busy_channels = self.active_tasks.find_channels(device_name=device_name)
         free_channels = list(set(range(0, device.number_of_channels)) - set(busy_channels))
 
         return free_channels, busy_channels
 
-    def process_init(self, task):
-        if 'device_address' in task['task']:
-            device_address = task['task']['device_address']
-        else:
-            device_address = None
-        device = self.get_device_object(task.tasks[0].device, device_address)
-        device_status = device.get_device_status()
-        if device_status != Status.UP:
-            ret = False
-            resp = 'Device status is not UP.'
-        else:
-            ret = True
-            resp = 'Success.'
-        # currently no further checks on init
-        return ret, task, resp
+    def pre_process_measure(self, task):
+        """
+        Perform checks on a measurement task given the current status of the autocontrol environment.
+        :param task: the task (task.Task)
+        :return: success flag, the task, response (bool, task.Task, str)
+        """
 
-    def process_shutdown(self, task):
-        # TODO: Implement waiting for all active tasks to finish and shut down device
-        return True, task, "Success."
+        if len(task.tasks) > 1:
+            # Multiple measurements per task are not supported because it is not clear how they would be assigned to
+            # one sample id or sample number
+            return False, task, "Multiple measurements per task not supported."
+        subtask = task.tasks[0]
 
-    def process_measure(self, task):
         # A measurement task should have a channel which is already occupied by the sample
-        if task.tasks[0].device not in self.channel_po:
+        if subtask.device not in self.channel_po:
             return False, task, 'Device not intialized.'
 
-        if 'acquisition_time' not in task['task']:
-            task['task']['acquisition_time'] = None
+        cpol = self.channel_po[subtask.device]
+        sample_number = task.sample_number
 
-        cpol = self.channel_po[task.tasks[0].device]
-        sample_number = task['sample_number']
-
-        if task.tasks[0].channel is None:
+        if subtask.channel is None:
             # Source channel is not defined. Locate the sampel based on sample number. If there are multiple,
             # measure the one with the highest priority
             best_channel = None
             for i, channel_task in enumerate(cpol):
-                if channel_task is not None and channel_task['sample_number'] == sample_number:
-                    if best_channel is None or cpol[best_channel]['priority'] > cpol[i]['priority']:
+                if channel_task is not None and channel_task.sample_number == sample_number:
+                    if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
                         best_channel = i
             if best_channel is None:
-                return False, task, 'Did not find the sample to transfer.'
-            task.tasks[0].channel = best_channel
+                return False, task, 'Did not find the sample to measure.'
+            subtask.channel = best_channel
         else:
             # check if manual channel selection is valid
-            if not (0 <= task.tasks[0].channel < len(cpol)):
+            if not (0 <= subtask.channel < len(cpol)):
                 return False, task, 'Invalid channel.'
-            if cpol[task.tasks[0].channel] is None:
+            if cpol[subtask.channel] is None:
                 return False, task, 'No sample in measurement channel'
-            if cpol[task.tasks[0].channel]['sample_number'] != sample_number:
+            if cpol[subtask.channel].sample_number != sample_number:
                 return False, task, 'Wrong sample in measurement channel.'
 
         return True, task, "Success."
 
-    def process_no_channel(self, task):
-        # currently no conditions to test
-        return True, task, "Success."
+    def pre_process_prepare(self, task):
+        """
+        Perform checks on a preparation task given the current status of the autocontrol environment. Find free
+        channels if none are given.
+        :param task: the task (task.Task)
+        :return: success flag, the task, response (bool, task.Task, str)
+        """
 
-    def process_prepare(self, task):
-        #
-        if task.tasks[0].device not in self.channel_po:
+        if len(task.tasks) > 1:
+            # Multiple preparations per task are not supported because it is not clear how they would be assigned to
+            # one sample id or sample number
+            return False, task, "Multiple preparations per task not supported."
+        subtask = task.tasks[0]
+
+        if subtask.device not in self.channel_po:
             return False, task, 'Device not intialized.'
 
-        cpol = self.channel_po[task.tasks[0].device]
-        sample_number = task['sample_number']
-        device = self.get_device_object(task.tasks[0].device)
-        channel_mode = device.channel_mode
-        free_channels, _ = self.get_channel_occupancy(task.tasks[0].device)
-        if not free_channels:
-            return False, task, 'No free channels available.'
+        if subtask.channel is not None:
+            # no check if manual channel is already occupied and with what
+            return True, task, 'Success.'
 
-        if channel_mode is None:
-            if not free_channels:
-                return False, task, 'No free channels.'
-            task.tasks[0].channel = free_channels[0]
+        # no channel given -> find channel
+        ret, subtask, response = self.find_free_channels(subtask, task.sample_number)
+        return ret, task, response
 
-        elif channel_mode == 'reuse' and task.tasks[0].channel is None:
-            # Find previous channel and target channel for this sample and device, the same channels will be reused
-            hist_channel, _ = self.sample_history.find_channels_per_device(task)
-            act_channel, _ = self.active_tasks.find_channels_per_device(task)
-            hist_channel = list(set(hist_channel + act_channel))
-            if not hist_channel:
-                task.tasks[0].channel = free_channels[0]
-            else:
-                success = False
-                for channel in hist_channel:
-                    if channel in free_channels:
-                        task.tasks[0].channel = channel
-                        success = True
-                        break
-                if not success:
-                    return False, task, 'No free channels.'
-
-        elif channel_mode == 'new' and task.tasks[0].channel is None:
-            # Find previous channel and target channel for this device, the same channels will be reused
-            hist_channel, _ = self.sample_history.find_channels_per_device(task, sample=False)
-            act_channel, _ = self.active_tasks.find_channels_per_device(task, sample=False)
-            hist_channel = list(set(hist_channel + act_channel))
-            success = False
-            for channel in free_channels:
-                if channel not in hist_channel:
-                    task.tasks[0].channel = channel
-                    success = True
-                    break
-            if not success:
-                return False, task, 'No free channels.'
-
-        else:
-            return False, task, 'Invalid channel mode.'
-
-        return True, task, "Success."
-
-    def process_transfer(self, task):
+    def pre_process_transfer(self, task):
+        """
+        Perform checks on a transfer task given the current status of the autocontrol environment. Find free
+        channels if none are given.
+        :param task: the task (task.Task)
+        :return: success flag, the task, response (bool, task.Task, str)
+        """
         # A transfer task should have a source channel which is already occupied by the sample that is being
         # transferred.
         # TODO: Implement chained transfers
 
-        if task.tasks[0].device not in self.channel_po:
-            return False, task, 'Device not intialized.'
-        if task['target_device'] not in self.channel_po:
-            return False, task, 'Target device not initialized'
+        for i, subtask in enumerate(task.tasks):
+            if subtask.device not in self.channel_po:
+                return False, task, 'Device not intialized.'
 
-        # add force transfer flag if not present
-        if 'force' not in task['task']:
-            task['task']['force'] = False
-        force = task['task']['force']
-        # add non-channel source if not present
-        if 'non_channel_source' not in task['task']:
-            task['task']['non_channel_source'] = None
-        # add non-channel target if not present
-        if 'non_channel_target' not in task['task']:
-            task['task']['non_channel_target'] = None
+            # check for consistency between non-channel and channel transfers:
+            if subtask.non_channel_storage is not None and subtask.channel is not None:
+                return False, task, 'Channel and non-channel storage simultaneously provided.'
 
-        # check for consistency between non-channel and channel transfers:
-        if task['task']['non_channel_source'] is not None and task['task']['channel'] is not None:
-            return False, task, 'Source channel and non-channel source simultaneously provided.'
-        if task['task']['non_channel_target'] is not None and task['task']['target_channel'] is not None:
-            return False, task, 'Target channel and non-channel target simultaneously provided.'
+            cpol = self.channel_po[subtask.device]
+            sample_number = task.sample_number
 
-        cpol = self.channel_po[task.tasks[0].device]
-        target_cpol = self.channel_po[task['target_device']]
-        sample_number = task['sample_number']
+            if subtask.channel is not None:
+                # check if manual channel selection is valid
+                if not (0 <= subtask.channel < len(self.channel_po[subtask.device])):
+                    return False, task, 'Invalid channel.'
+                if i == 0 and cpol[subtask.channel]['sample_number'] != sample_number:
+                    return False, task, 'Wrong sample in source channel.'
+                return True, task, 'Success.'
 
-        if task.tasks[0].channel is not None:
-            # check if manual channel selection is valid
-            if not (0 <= task.tasks[0].channel < len(self.channel_po[task.tasks[0].device])):
-                return False, task, 'Invalid channel.'
-            if cpol[task.tasks[0].channel]['sample_number'] != sample_number:
-                return False, task, 'Wrong sample in source channel.'
-        elif task['task']['non_channel_source'] is None:
-            # Source channel is not defined. Find a source channel. Locate the sample based on sample number. If there
-            # are multiple, transfer the one with the highest priority.
-            best_channel = None
-            for i, channel_task in enumerate(cpol):
-                if channel_task is not None and channel_task['sample_number'] == sample_number:
-                    if best_channel is None or cpol[best_channel]['priority'] > cpol[i]['priority']:
-                        best_channel = i
-            if best_channel is None:
-                return False, task, 'Did not find the sample to transfer.'
-            task.tasks[0].channel = best_channel
+            if task['task']['non_channel_target'] is not None:
+                # no need to identify target channel
+                return True, task, 'Success.'
 
-        if task['task']['non_channel_target'] is not None:
-            # no need to identify target channel
-            return True, task, 'Success.'
-
-        target_device = self.get_device_object(task['target_device'])
-        channel_mode = target_device.channel_mode
-        free_target_channels, _ = self.get_channel_occupancy(task['target_device'])
-        if not free_target_channels and not force:
-            return False, task, 'No idle target channels available.'
-
-        if task['target_channel'] is None:
-            if channel_mode is None:
-                if not free_target_channels:
-                    return False, task, 'No idle target channels.'
-                task['target_channel'] = free_target_channels[0]
-
-            elif channel_mode == 'reuse' and task.tasks[0].channel is None:
-                # Find previous channel and target channel for this sample and device, the same channels will be reused
-                _, hist_target_channel = self.sample_history.find_channels_per_device(task)
-                _, act_target_channel = self.active_tasks.find_channels_per_device(task)
-                hist_target_channel = list(set(hist_target_channel + act_target_channel))
-                if not hist_target_channel:
-                    task['target_channel'] = free_target_channels[0]
-                else:
-                    success = False
-                    for channel in hist_target_channel:
-                        if channel in free_target_channels:
-                            task['target_channel'] = channel
-                            success = True
-                            break
-                    if not success:
-                        return False, task, 'No free target channels.'
-
-            elif channel_mode == 'new' and task.tasks[0].channel is None:
-                # Find previous channel and target channel for this device, the same channels will be reused
-                _, hist_target_channel = self.sample_history.find_channels_per_device(task, sample=False)
-                _, act_target_channel = self.active_tasks.find_channels_per_device(task, sample=False)
-                hist_target_channel = list(set(hist_target_channel + act_target_channel))
-                success = False
-                for channel in free_target_channels:
-                    if channel not in hist_target_channel:
-                        task['target_channel'] = channel
-                        success = True
-                        break
-                if not success:
-                    return False, task, 'No free target channels.'
-
+            # No channel or non-channel storage given. Find a channel.
+            if i == 0:
+                # Source device. Find the sample based on sample number. If there are multiple, transfer the one with
+                # the highest priority.
+                best_channel = None
+                for j, channel_task in enumerate(cpol):
+                    if channel_task is not None and channel_task.sample_number == sample_number:
+                        if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
+                            best_channel = j
+                if best_channel is None:
+                    return False, task, 'Did not find the sample to transfer.'
+                subtask.channel = best_channel
             else:
-                return False, task, 'Invalid channel mode.'
-
-        # check if either manual or freshly determined target channel selection is valid
-        if not (0 <= task['target_channel'] < len(target_cpol)):
-            return False, task, 'Invalid target channel.'
-        if target_cpol[task['target_channel']] is not None and not force:
-            return False, task, 'Target channel not empty.'
+                # one of the target devices
+                success, subtask, response = self.find_free_channels(subtask, task.sample_number)
+                if not success:
+                    return False, task, response
 
         return True, task, 'Success.'
 
@@ -392,33 +347,35 @@ class autocontrol:
 
         # identify the device based on the device name
         device = self.get_device_object(task.tasks[0].device)
-
         if device is None:
             return False, task, 'Unknown device.'
-        elif task.task_type == TaskType.INIT:
-            execute_task, task, resp = self.process_init(task)
-        elif device.get_device_status() is not Status.UP:
-            # check if device is DOWN or unable to accept a task because it is BUSY or for other reasons
-            # init is an exception as this task puts the device in operation
-            return False, task, 'Device is down or busy.'
-        elif task.task_type == TaskType.SHUTDOWN:
-            execute_task, task, resp = self.process_shutdown(task)
-        elif task.task_type == TaskType.TRANSFER:
-            # TODO: implemement chained transfers
-            target_device = self.get_device_object(task['target_device'])
-            if target_device is None:
-                return False, task, 'Unknown target device.'
-            if target_device.get_device_status() is not Status.UP:
-                return False, task, 'Target device is down or busy.'
-            execute_task, task, resp = self.process_transfer(task)
-        elif task.task_type == TaskType.PREPARE:
-            execute_task, task, resp = self.process_prepare(task)
-        elif task.task_type == TaskType.MEASURE:
-            execute_task, task, resp = self.process_measure(task)
-        elif task.task_type == TaskType.NOCHANNEL:
-            execute_task, task, resp = self.process_no_channel(task)
-        else:
+
+        # Devices must be up or idle to submit any tasks
+        for subtask in task.tasks:
+            device_address = subtask.device_address
+            device = self.get_device_object(subtask.device, device_address)
+            device_status = device.get_device_status()
+            if device_status != (Status.UP or Status.IDLE):
+                return False, task, 'Device is down or busy.'
+
+        task_handlers = {
+            TaskType.INIT: None,
+            TaskType.SHUTDOWN: None,
+            TaskType.TRANSFER: self.pre_process_transfer,
+            TaskType.PREPARE: self.pre_process_prepare,
+            TaskType.MEASURE: self.pre_process_measure,
+            TaskType.NOCHANNEL: None
+        }
+        if task.task_type not in task_handlers:
             return False, task, 'Unknown task type.'
+
+        if task_handlers[task.task_type] is not None:
+            # perform pre-processing and checks
+            execute_task, task, resp = task_handlers[task.task_type](task)
+        else:
+            # currently no checks / pre-processing implemented
+            execute_task = True
+            resp = 'Success.'
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
         # another layer of protection against cases in which are not caught by checks on the physical and operational
@@ -431,27 +388,27 @@ class autocontrol:
             execute_task = False
             resp = 'Waiting for ongoing task at (target) device and (target) channel to finish.'
 
-        if execute_task:
+        elif execute_task:
             # Note: Every task execution including measurements only sends a signal to the device and do not wait for
             # completion. Results are collected separately during self.update_active_tasks(). This allows for parallel
             # tasks.
 
             # add start time to metadata
-            if 'md' not in task:
-                task['md'] = {}
-            task['md']['execution_start_time'] = time.gmtime(time.time())
+            task.md['execution_start_time'] = time.gmtime(time.time())
 
-            status = device.execute_task(task=task)
-            if task.task_type == TaskType.TRANSFER and device != target_device:
-                # a transfer task is active on the source and target device, reserving respective channels
-                status &= target_device.execute_task(task=task)
+            task_success = True
+            for subtask in task.tasks:
+                device = self.get_device_object(subtask.device)
+                status, resp = device.execute_task(subtask=subtask, task_type=task.task_type)
+                subtask.md['submission_response'] = resp
+                if status != Status.SUCCESS:
+                    task_success = False
 
             # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
             #   in a transfer is returning a non-success status.
+            #   For this, we need to implement abort methods and need to pull tasks already started from the instrument.
 
-            if status == Status.SUCCESS:
-                # store every task that is executed active tasks
-                task['md']['response'] = resp
+            if task_success:
                 self.active_tasks.put(task)
             else:
                 execute_task = False
@@ -466,6 +423,7 @@ class autocontrol:
         :return: no return value
         """
         device = self.get_device_object(task.tasks[0].device)
+
         if task.task_type == TaskType.INIT:
             # create an empty channel physical occupancy entry for the device (False == not occupied)
             noc = device.number_of_channels
@@ -510,8 +468,18 @@ class autocontrol:
         """
         return self.queue.get_all()
 
+    def store_channel_po(self):
+        """
+        Stores the channel physical occupancy list in the storage directory.
+        :return: no return value
+        """
+        with open(os.path.join(self.storage_path, 'channel_po.json'), 'w') as f:
+            json.dump(self.channel_po, f, indent=4)
+
     def queue_execute_one_item(self):
         """
+        This is an external API method
+
         Executes one task from the priority queue if not empty and the resource is available.
 
         Logic:
@@ -544,17 +512,15 @@ class autocontrol:
             if task is None:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1
-            elif task['sample_number'] not in blocked_samples:
+            elif task.sample_number not in blocked_samples:
                 success, task, response = self.process_task(task)
-                if 'md' not in task:
-                    task['md'] = {}
-                task['md']['response'] = response
+                task.md['submission_response'] = response
                 if success:
                     # a succesful job ends the execution of this method
                     break
                 else:
                     # this sample number is now blocked as processing of the job was not successful
-                    blocked_samples.append(task['sample_number'])
+                    blocked_samples.append(task.sample_number)
                     unsuccesful_jobs.append(task)
             else:
                 unsuccesful_jobs.append(task)
@@ -567,12 +533,11 @@ class autocontrol:
 
     def queue_put(self, task):
         """
+        This is an external API method.
         Puts a task into the priority queue.
-
         :param task: (task.Task) The task.
         :return: no return value
         """
-
         # Assign a sample number with regard to the submitted sample id. Check if the sample id has been submitted
         # before.
         if task.sample_number is None:
@@ -600,16 +565,10 @@ class autocontrol:
 
         self.queue.put(task)
 
-    def store_channel_po(self):
-        """
-        Stores the channel physical occupancy list in the storage directory.
-        :return: no return value
-        """
-        with open(os.path.join(self.storage_path, 'channel_po.json'), 'w') as f:
-            json.dump(self.channel_po, f, indent=4)
-
     def update_active_tasks(self):
         """
+        This is an external API method.
+
         Goes through the entire list of active tasks and checks if they are completed. Follows up with clean-up and
         post-processing steps.
         :return: no return value

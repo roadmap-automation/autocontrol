@@ -5,7 +5,7 @@ import json
 from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
-from task import Task
+from task_type import Task
 import time
 from werkzeug.serving import run_simple
 
@@ -28,7 +28,7 @@ def background_task():
         # Try to execute one item from the bluesky queue.
         # If all resources are busy or the queue is empty, the method returns without doing anything.
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
-        # # atc.queue_execute_one_item()
+        atc.queue_execute_one_item()
         # sleep for some time before
         time.sleep(10)
 

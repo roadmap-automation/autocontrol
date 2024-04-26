@@ -33,12 +33,14 @@ class open_QCMD(Device):
         # TODO: Implement for device
         return Status.TODO
 
-    def init(self, task):
-        self.channel_mode = None
+    def init(self, subtask):
+        self.address = subtask.device_address
+        self.number_of_channels = subtask.number_of_channels
+        self.channel_mode = subtask.channel_mode
 
         if self.test:
-            if 'number_of_channels'in task['task']:
-                noc = task['task']['number_of_channels']
+            if subtask.number_of_channels is not None:
+                noc = subtask.number_of_channels
                 if noc is None or noc < 2:
                     noc = 1
                 else:
@@ -52,12 +54,10 @@ class open_QCMD(Device):
         #  number of channels from task['channel']
         #  any other variables from the task['task'] dictionary
         #  self.communicate can be used or modified for communication with the qcmd device
-        self.address = task['device_address']
-        self.number_of_channels = task['channel']
-        self.channel_mode = task['channel_mode']
+
         return Status.TODO
 
-    def measure(self, task):
+    def measure(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS
@@ -67,12 +67,12 @@ class open_QCMD(Device):
         status = self.get_device_status()
         if status != Status.UP:
             return Status.ERROR
-        if task['task']['acquisition_time'] is not None:
-            acquisition_time = float(task['task']['acquisition_time'])
-        status = self.communicate("start")
+        if subtask.acquisition_time is not None:
+            acquisition_time = subtask.acquisition_time
+        # status = self.communicate("start")
         return Status.TODO
 
-    def no_channel(self, task):
+    def no_channel(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS
@@ -113,7 +113,7 @@ class open_QCMD(Device):
 
         return Status.SUCCESS, rdict
 
-    def transfer(self, task):
+    def transfer(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS

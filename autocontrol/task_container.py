@@ -2,7 +2,7 @@ import json
 import sqlite3
 import threading
 
-import task
+import task_type
 
 
 class TaskContainer:
@@ -69,13 +69,12 @@ class TaskContainer:
         conn.close()
         self.lock.release()
 
-    def find_channels_per_device(self, task, sample=True):
+    def find_channels(self, sample_number=None, device_name=None):
         """
-        Find the channel of any stored task of this sample on this device and any target channels of
-        transfers of this sample to other devices. Only one channel and target channel are returned (for applications
-        that will reuse those channels).
-        :param task: (task_container) the reference task
-        :param sample: (bool) only consider the channels that were used by the same sample (number)
+        Find the used channels of all stored subtask given the device provided by the reference subtask. If enabled,
+        the results will be further filtered by the sample_number provided.
+        :param sample_number: (int) only consider the channels that were used by the same sample (number)
+        :param device_name: (str) only consider the channels on the given device
         :return: (tuple) Found channel and target channel.
         """
 
@@ -85,65 +84,20 @@ class TaskContainer:
 
         # seach for any task of this sample on this device and prioritize results of task type transfer
         # this way, if there is a transfer task with a defined target channel, it will be retrieved
-        if sample:
+        if sample_number is not None:
             query = """
             SELECT channel, target_channel FROM task_table
-            WHERE (device = ? AND sample_number = ?)
-            ORDER BY CASE WHEN task_type = 'transfer' THEN 1 ELSE 2 END
-            LIMIT 1
+            WHERE (sample_number = ?)
             """
-            cursor.execute(query, (task['device'], task['sample_number']))
+            cursor.execute(query, sample_number)
         else:
             query = """
             SELECT channel, target_channel FROM task_table
-            WHERE (device = ?)
-            ORDER BY CASE WHEN task_type = 'transfer' THEN 1 ELSE 2 END
-            LIMIT 1
             """
-            cursor.execute(query, (task['device']))
-
+            cursor.execute(query)
         result = cursor.fetchone()
 
-        if result is not None:
-            # make result into dictionary
-            desc = cursor.description
-            column_names = [col[0] for col in desc]
-            data = dict(zip(column_names, result))
-            result = data
-
-            channel = result['channel']
-            target_channel = result['target_channel']
-        else:
-            channel = None
-            target_channel = None
-
-        cursor.close()
-        conn.close()
-        self.lock.release()
-
-        return channel, target_channel
-
-    def find_channels_for_device(self, device_name):
-        """
-        Yields a list of used channels for this device based on the stored tasks
-        :param device_name:
-        :return: (list of int) channel numbers
-        """
-
-        self.lock.acquire()
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = """
-        SELECT channel, target_channel FROM task_table
-        WHERE device = ?
-        """
-
-        cursor.execute(query, (device_name, ))
-        result = cursor.fetchall()
-
         channels = set()
-        target_channels = set()
         if result is not None:
             # make result into dictionary
             desc = cursor.description
@@ -153,14 +107,17 @@ class TaskContainer:
 
             # Use a set to avoid duplicate channel numbers
             for element in result:
-                channels.add(element['channel'])
-                target_channels.add(element['target_channel'])
+                tsk = task.Task(**element)
+                for subtask in tsk.tasks:
+                    if device_name is None or subtask.device == device_name:
+                        if subtask.channel is not None:
+                            channels.add(element['channel'])
 
         cursor.close()
         conn.close()
         self.lock.release()
 
-        return list(channels), list(target_channels)
+        return list(channels)
 
     def find_interference(self, task):
         """
@@ -309,6 +266,7 @@ class TaskContainer:
 
         # The target channel and device are endpoints of a multistep transfer. Autocontrol is not currently not
         # concerned with assigning channels for intermediate devices.
+        # TODO: Not sure that the device name needs to be presented at the top level anymore
         query = """
             INSERT INTO task_table (
                 task, priority, task_id, sample_id, sample_number, channel, task_type, device, target_channel, 

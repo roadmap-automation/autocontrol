@@ -2,7 +2,7 @@ import json
 import multiprocessing
 import os
 import requests
-import task as tsk
+import task_type as tsk
 import server
 import signal
 import socket
