@@ -81,16 +81,16 @@ class Device(object):
         return Status.INVALID
 
     def init(self, task):
-        return Status.INVALID
+        return Status.INVALID, ''
 
     def measure(self, task):
-        return Status.INVALID
+        return Status.INVALID, ''
 
     def no_channel(self, task):
-        return Status.INVALID
+        return Status.INVALID, ''
 
     def prepare(self, task):
-        return Status.INVALID
+        return Status.INVALID, ''
 
     def transfer(self, task):
-        return Status.INVALID
+        return Status.INVALID, ''

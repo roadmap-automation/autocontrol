@@ -86,32 +86,20 @@ class TaskContainer:
         # this way, if there is a transfer task with a defined target channel, it will be retrieved
         if sample_number is not None:
             query = """
-            SELECT channel, target_channel FROM task_table
+            SELECT task FROM task_table
             WHERE (sample_number = ?)
             """
             cursor.execute(query, sample_number)
         else:
-            query = """
-            SELECT channel, target_channel FROM task_table
-            """
+            query = """SELECT task FROM task_table"""
             cursor.execute(query)
         result = cursor.fetchone()
 
+        # Use a set to avoid duplicate channel numbers
         channels = set()
         if result is not None:
-            # make result into dictionary
-            desc = cursor.description
-            column_names = [col[0] for col in desc]
-            data = [dict(zip(column_names, row)) for row in result]
-            result = data
-
-            # Use a set to avoid duplicate channel numbers
             for element in result:
-                # make element into dictionary
-                desc = cursor.description
-                column_names = [col[0] for col in desc]
-                entrydict = dict(zip(column_names, element))
-                tsk = task_struct.Task.parse_raw(entrydict['task'])
+                tsk = task_struct.Task.parse_raw(element)
                 for subtask in tsk.tasks:
                     if device_name is None or subtask.device == device_name:
                         if subtask.channel is not None:
@@ -146,29 +134,21 @@ class TaskContainer:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        query = "SELECT * FROM task_table"
+        query = "SELECT task FROM task_table"
         cursor.execute(query)
         result = cursor.fetchall()
 
+        ret = []
         if result is not None:
-            # make result into dictionary
-            desc = cursor.description
-            column_names = [col[0] for col in desc]
-            data = [dict(zip(column_names, row)) for row in result]
-            result = []
-            for entry in data:
+            for entry in result:
                 # deserialize tasks and append to results list
-                # make result into dictionary
-                desc = cursor.description
-                column_names = [col[0] for col in desc]
-                entrydict = dict(zip(column_names, entry))
-                result.append(task_struct.Task.parse_raw(entrydict['task']))
+                ret.append(task_struct.Task.parse_raw(entry))
 
         cursor.close()
         conn.close()
         self.lock.release()
 
-        return result
+        return ret
 
     def get_and_remove_by_priority(self, task_type=None):
         """
@@ -183,12 +163,12 @@ class TaskContainer:
         cursor = conn.cursor()
 
         if task_type is None:
-            query = "SELECT * FROM task_table ORDER BY priority DESC LIMIT 1"
+            query = "SELECT task FROM task_table ORDER BY priority DESC LIMIT 1"
         elif isinstance(task_type, str):
-            query = "SELECT * FROM task_table WHERE task_type='" + task_type + "' ORDER BY priority DESC LIMIT 1"
+            query = "SELECT task FROM task_table WHERE task_type='" + task_type + "' ORDER BY priority DESC LIMIT 1"
         elif isinstance(task_type, list):
             task_type_str = "','".join(task_type)
-            query = ("SELECT * FROM task_table WHERE task_type IN ('" + task_type_str +
+            query = ("SELECT task FROM task_table WHERE task_type IN ('" + task_type_str +
                      "') ORDER BY priority DESC LIMIT 1")
         else:
             cursor.close()
@@ -200,21 +180,18 @@ class TaskContainer:
         result = cursor.fetchone()
 
         # remove retrieved item
+        ret = None
         if result is not None:
-            # make result into dictionary
-            desc = cursor.description
-            column_names = [col[0] for col in desc]
-            tsk = dict(zip(column_names, result))
-            result = task_struct.Task.parse_raw(tsk['task'])
+            ret = task_struct.Task.parse_raw(result)
 
-            cursor.execute("DELETE FROM task_table WHERE id=:id", {'id': result.id})
+            cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(ret.task_id)})
             conn.commit()
 
         cursor.close()
         conn.close()
         self.lock.release()
 
-        return result
+        return ret
 
     def put(self, task):
         """
@@ -267,34 +244,3 @@ class TaskContainer:
         cursor.close()
         conn.close()
         self.lock.release()
-
-    def remove_by_channel(self, device_name, channel_list):
-        """
-        Removes all tasks of a certain device that use channels given in the channel list
-        :param device_name: device name
-        :param channel_list: list of channels
-        :return: no return value
-        """
-
-        self.lock.acquire()
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Create a string with placeholders for each item in channel_list
-        placeholders = ', '.join('?' * len(channel_list))
-
-        query = f"""
-        DELETE FROM task_table
-        WHERE device = ? AND channel IN ({placeholders})
-        """
-
-        # Create a tuple of parameters including device_name and all channels
-        parameters = (device_name,) + tuple(channel_list)
-
-        cursor.execute(query, parameters)
-        conn.commit()
-
-        cursor.close()
-        conn.close()
-        self.lock.release()
-

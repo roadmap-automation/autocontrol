@@ -51,42 +51,42 @@ class lh_device(Device):
             else:
                 noc = 1
             self.number_of_channels = noc
-            return Status.SUCCESS
+            return Status.SUCCESS, ''
 
-        return Status.TODO
+        return Status.TODO, ''
 
     def no_channel(self, subtask):
         if self.test:
             ttime.sleep(5)
-            return Status.SUCCESS
+            return Status.SUCCESS, ''
 
         # TODO: Implement a channel-less task -> see documentation
         #   Make sure to set the entire device to BUSY during task execution and back to UP when done.
 
         status = self.get_device_status()
         if status != Status.UP:
-            return Status.ERROR
+            return Status.ERROR, ''
 
-        return Status.TODO
+        return Status.TODO, ''
 
     def prepare(self, subtask):
         if self.test:
             ttime.sleep(5)
-            return Status.SUCCESS
+            return Status.SUCCESS, ''
 
         # TODO: Implement prepare -> see documentation
 
         # if liquid handler is busy, do not start new measurement
         status = self.get_device_status()
         if status != Status.UP:
-            return Status.ERROR
+            return Status.ERROR, ''
         # status = self.communicate("start")
-        return Status.TODO
+        return Status.TODO, ''
 
     def transfer(self, subtask):
         if self.test:
             ttime.sleep(5)
-            return Status.SUCCESS
+            return Status.SUCCESS, ''
 
         # TODO: Implement transfer -> see documentation
         #   Do not forget to mark the source or target channel as busy for a channel-based transfer
@@ -95,6 +95,6 @@ class lh_device(Device):
         # if liquid handler is busy, do not start new measurement
         status = self.get_device_status()
         if status != Status.UP:
-            return Status.ERROR
+            return Status.ERROR, ''
 
-        return Status.TODO
+        return Status.TODO, ''
