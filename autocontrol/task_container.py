@@ -2,7 +2,7 @@ import json
 import sqlite3
 import threading
 
-import task_type
+import task_struct
 
 
 class TaskContainer:
@@ -75,7 +75,7 @@ class TaskContainer:
         the results will be further filtered by the sample_number provided.
         :param sample_number: (int) only consider the channels that were used by the same sample (number)
         :param device_name: (str) only consider the channels on the given device
-        :return: (tuple) Found channel and target channel.
+        :return: (list) busy channels
         """
 
         self.lock.acquire()
@@ -107,11 +107,15 @@ class TaskContainer:
 
             # Use a set to avoid duplicate channel numbers
             for element in result:
-                tsk = task.Task(**element)
+                # make element into dictionary
+                desc = cursor.description
+                column_names = [col[0] for col in desc]
+                entrydict = dict(zip(column_names, element))
+                tsk = task_struct.Task.parse_raw(entrydict['task'])
                 for subtask in tsk.tasks:
                     if device_name is None or subtask.device == device_name:
                         if subtask.channel is not None:
-                            channels.add(element['channel'])
+                            channels.add(subtask.channel)
 
         cursor.close()
         conn.close()
@@ -122,57 +126,15 @@ class TaskContainer:
     def find_interference(self, task):
         """
         Checks if a task is interfering with an existing task on the same (target) device and (target) channel.
-        :param task: (json) task to check
+        :param task: (task_struct.Task) task to check
         :return: (bool) True if task is interfering
         """
 
-        self.lock.acquire()
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        retvalue = False
-
-        if task['channel'] is not None:
-            query = """
-            SELECT channel FROM task_table
-            WHERE device = ?
-            """
-            cursor.execute(query, (task['device'], ))
-            results = cursor.fetchall()
-            channels = set()
-            for element in results:
-                channels.add(element['channel'])
-            if task['channel'] in channels:
-                retvalue = True
-
-        if task['target_channel'] is not None:
-            query = """
-            SELECT target_channel FROM task_table
-            WHERE device = ?
-            """
-            cursor.execute(query, (task['target_device'], ))
-            results = cursor.fetchall()
-            channels = set()
-            for element in results:
-                channels.add(element['target_channel'])
-            if task['target_channel'] in channels:
-                retvalue = True
-
-            query = """
-            SELECT channel FROM task_table
-            WHERE device = ?
-            """
-            cursor.execute(query, (task['target_device'], ))
-            results = cursor.fetchall()
-            channels = set()
-            for element in results:
-                channels.add(element['channel'])
-            if task['target_channel'] in channels:
-                retvalue = True
-
-        cursor.close()
-        conn.close()
-        self.lock.release()
+        for subtask in task.tasks:
+            busy_channels = self.find_channels(device_name=subtask.device)
+            if subtask.channel in busy_channels:
+                return True
+        return False
 
     def get_all(self):
         """
@@ -196,7 +158,11 @@ class TaskContainer:
             result = []
             for entry in data:
                 # deserialize tasks and append to results list
-                result.append(task.Task(**entry))
+                # make result into dictionary
+                desc = cursor.description
+                column_names = [col[0] for col in desc]
+                entrydict = dict(zip(column_names, entry))
+                result.append(task_struct.Task.parse_raw(entrydict['task']))
 
         cursor.close()
         conn.close()
@@ -238,10 +204,10 @@ class TaskContainer:
             # make result into dictionary
             desc = cursor.description
             column_names = [col[0] for col in desc]
-            data = dict(zip(column_names, result))
-            result = task.deserialize_task_data(**data)
+            tsk = dict(zip(column_names, result))
+            result = task_struct.Task.parse_raw(tsk['task'])
 
-            cursor.execute("DELETE FROM task_table WHERE id=:id", {'id': result['id']})
+            cursor.execute("DELETE FROM task_table WHERE id=:id", {'id': result.id})
             conn.commit()
 
         cursor.close()
@@ -295,7 +261,7 @@ class TaskContainer:
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM task_table WHERE priority=:priority",
-                       {'priority': task['priority']})
+                       {'priority': task.priority})
         conn.commit()
 
         cursor.close()
@@ -331,8 +297,4 @@ class TaskContainer:
         cursor.close()
         conn.close()
         self.lock.release()
-
-
-
-
 

@@ -1,6 +1,6 @@
 import json
 import requests
-from task_type import TaskType
+from task_struct import TaskType
 from status import Status
 
 

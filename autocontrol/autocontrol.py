@@ -4,7 +4,7 @@ import math
 import os
 from device_qcmd import open_QCMD
 from task_container import TaskContainer
-from task_type import TaskType
+from task_struct import TaskType
 from device_liquid_handler import lh_device
 from status import Status
 

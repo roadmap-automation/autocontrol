@@ -5,7 +5,7 @@ import json
 from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
-from task_type import Task
+from task_struct import Task
 import time
 from werkzeug.serving import run_simple
 
