@@ -80,6 +80,7 @@ def integration_test():
             device_type='qcmd',
             device_address='https:hereitcomes',
             number_of_channels=1,
+            simulated=True,
             md={'description': 'QCMD init'}
         )]
     )
@@ -93,6 +94,7 @@ def integration_test():
             device_type='lh',
             device_address='https:hereitcomes',
             number_of_channels=10,
+            simulated=True,
             md={'description': 'lh init'}
         )]
     )

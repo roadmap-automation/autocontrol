@@ -9,9 +9,6 @@ class lh_device(Device):
     This class implements a liquid handler device interface for autocontrol.
     """
 
-    def __init__(self, name="liquid handler", address=None):
-        super().__init__(name, address)
-
     def get_channel_status(self, channel):
         """
         Retrieves the status of a channel.

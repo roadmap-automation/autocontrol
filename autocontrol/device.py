@@ -5,14 +5,14 @@ from status import Status
 
 
 class Device(object):
-    def __init__(self, name=None, address=None):
+    def __init__(self, name=None, address=None, simulated=False):
         self.name = name
         self.address = address
         self.number_of_channels = 1
         self.channel_mode = None
 
         # hard-coded test flag
-        self.test = True
+        self.test = simulated
 
     def communicate(self, command, value=0):
         """

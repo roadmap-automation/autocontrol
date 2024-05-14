@@ -7,9 +7,6 @@ from status import Status
 
 class open_QCMD(Device):
 
-    def __init__(self, name="Open QCMD", address=None):
-        super().__init__(name, address)
-
     def get_channel_status(self, channel):
         """
         Retrieves the status of a channel.

@@ -213,11 +213,12 @@ class autocontrol:
         device_name = task.tasks[0].device
         device_type = task.tasks[0].device_type
         device_address = task.tasks[0].device_address
+        simulated = task.tasks[0].simulated
 
         if device_type == 'lh' or device_type == 'LH':
-            device_object = lh_device(name=device_name, address=device_address)
+            device_object = lh_device(name=device_name, address=device_address, simulated=simulated)
         elif device_type == 'qcmd' or device_type == 'QCMD':
-            device_object = open_QCMD(name=device_name, address=device_address)
+            device_object = open_QCMD(name=device_name, address=device_address, simulated=simulated)
         else:
             return False, task, 'Unknown device.'
 
