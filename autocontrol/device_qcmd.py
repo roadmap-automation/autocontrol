@@ -28,7 +28,7 @@ class open_QCMD(Device):
         :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID
         """
         if self.test:
-            return Status.UP
+            return Status.IDLE
 
         # TODO: Implement for device
         return Status.TODO

@@ -2,6 +2,8 @@ import json
 import time
 import math
 import os
+import uuid
+
 from device_qcmd import open_QCMD
 from task_container import TaskContainer
 from task_struct import TaskType
@@ -52,12 +54,7 @@ class autocontrol:
         # accepts only sample preparations
         self.prepare_only = False
 
-        # Devices
-        self.lh = lh_device(name="lh")
-        self.qcmd = open_QCMD(name="QCMD", address="http://localhost:5011/QCMD/")
-
         # Queues and containers
-
         # Priority, active, and history queues
         if storage_path is None:
             self.storage_path = '../test/'
@@ -73,8 +70,13 @@ class autocontrol:
         # currently executed preparations and measurements
         self.active_tasks = TaskContainer(db_path_active)
 
-        # highest sample number in use
+        # directory of sample id (keys) and the associated sample numbers
         self.sample_id_to_number = {}
+
+        # device addresses
+        # keys: device name
+        # entries: dictionary with keys for device address, device object, device type
+        self.devices = {}
 
         # channel physical occupation
         # for each device there will be a list in this dictionary with the device name as the key. Each list has as many
@@ -175,24 +177,17 @@ class autocontrol:
             busy_channels = list(set(busy_channels + busy_channels_po))
         return free_channels, busy_channels
 
-    def get_device_object(self, name, device_address=None):
+    def get_device_object(self, name):
         """
         Helper function that identifies the device object and plan based on the device name.
         :param name: device name
-        :param device_address: optional device address that will be stored in the respective device object
         :return: device object
         """
-        if name == 'LH' or name == 'lh':
-            device = self.lh
-        elif name == 'QCMD' or name == 'qcmd':
-            device = self.qcmd
+
+        if name in self.devices:
+            return self.devices[name]['device_object']
         else:
-            device = None
-
-        if device is not None and device_address is not None:
-            device.address = device_address
-
-        return device
+            return None
 
     def get_channel_information_from_active_tasks(self, device_name):
         """
@@ -207,6 +202,31 @@ class autocontrol:
         free_channels = list(set(range(0, device.number_of_channels)) - set(busy_channels))
 
         return free_channels, busy_channels
+
+    def pre_process_init(self, task):
+        """
+        Perform checks on init task and register device to device list.
+        :param task:
+        :return: success flag, the task, response (bool, task.Task, str)
+        """
+
+        device_name = task.tasks[0].device
+        device_type = task.tasks[0].device_type
+        device_address = task.tasks[0].device_address
+
+        if device_type == 'lh' or device_type == 'LH':
+            device_object = lh_device(name=device_name, address=device_address)
+        elif device_type == 'qcmd' or device_type == 'QCMD':
+            device_object = open_QCMD(name=device_name, address=device_address)
+        else:
+            return False, task, 'Unknown device.'
+
+        self.devices[device_name] = {}
+        self.devices[device_name]['device_object'] = device_object
+        self.devices[device_name]['device_type'] = device_type
+        self.devices[device_name]['device_address'] = device_address
+
+        return True, task, 'Success.'
 
     def pre_process_measure(self, task):
         """
@@ -305,7 +325,7 @@ class autocontrol:
                     return False, task, 'Wrong sample in source channel.'
                 return True, task, 'Success.'
 
-            if task['task']['non_channel_target'] is not None:
+            if subtask.non_channel_storage is not None:
                 # no need to identify target channel
                 return True, task, 'Success.'
 
@@ -345,21 +365,22 @@ class autocontrol:
         :return: (bool, str) success flag, response string
         """
 
-        # identify the device based on the device name
-        device = self.get_device_object(task.tasks[0].device)
-        if device is None:
-            return False, task, 'Unknown device.'
+        # identify the device based on the device name and check status, except for init tasks
+        # there, the device might not be initialized yet
+        if task.task_type != TaskType.INIT:
+            device = self.get_device_object(task.tasks[0].device)
+            if device is None:
+                return False, task, 'Unknown device.'
 
-        # Devices must be up or idle to submit any tasks
-        for subtask in task.tasks:
-            device_address = subtask.device_address
-            device = self.get_device_object(subtask.device, device_address)
-            device_status = device.get_device_status()
-            if device_status != (Status.UP or Status.IDLE):
-                return False, task, 'Device is down or busy.'
+            # Devices must be up or idle to submit any tasks
+            for subtask in task.tasks:
+                device = self.get_device_object(subtask.device)
+                device_status = device.get_device_status()
+                if not (device_status == Status.UP or device_status == Status.IDLE):
+                    return False, task, 'Device is down or busy.'
 
         task_handlers = {
-            TaskType.INIT: None,
+            TaskType.INIT: self.pre_process_init,
             TaskType.SHUTDOWN: None,
             TaskType.TRANSFER: self.pre_process_transfer,
             TaskType.PREPARE: self.pre_process_prepare,
@@ -399,7 +420,7 @@ class autocontrol:
             task_success = True
             for subtask in task.tasks:
                 device = self.get_device_object(subtask.device)
-                status, resp = device.execute_task(subtask=subtask, task_type=task.task_type)
+                status, resp = device.execute_task(task=subtask, task_type=task.task_type)
                 subtask.md['submission_response'] = resp
                 if status != Status.SUCCESS:
                     task_success = False
@@ -431,18 +452,21 @@ class autocontrol:
 
         elif task.task_type == TaskType.MEASURE:
             # get measurment data
-            while device.get_device_status() != Status.UP:
+            while True:
+                status = device.get_device_status()
+                if status == Status.IDLE or status == Status.UP:
+                    break
                 # Wait for device to become available to retrieve data. This is for catching an instrument
                 # exception and not for waiting for the measurement to finish. This is done with ocupational channel
                 # states above.
                 # TODO: Better exception handling for this critical case
-                print('Device {} not up.', task.tasks[0].device)
+                print('Device {} not up or busy.', task.tasks[0].device)
                 time.sleep(10)
             read_status, data = device.read(channel=task.tasks[0].channel)
             # append data to task
-            if 'md' not in task:
-                task['md'] = {}
             task.tasks[0].md['measurement_data'] = data
+            # append task id associated with measurement material to current measurement task
+            task.task_history.append(self.channel_po[task.tasks[0].device][task.tasks[0].channel].id)
             # Attach measurement task to the physical occupancy list
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
 
@@ -451,6 +475,8 @@ class autocontrol:
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
 
         elif task.task_type == TaskType.TRANSFER:
+            # append task id associated with transfer source to current transfer task
+            task.task_history.append(self.channel_po[task.tasks[0].device][task.tasks[0].channel].id)
             # remove existing task from the source channel physical occupancy
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = None
             # attach current task to the target channel physical occupancy
@@ -474,7 +500,11 @@ class autocontrol:
         :return: no return value
         """
         with open(os.path.join(self.storage_path, 'channel_po.json'), 'w') as f:
-            json.dump(self.channel_po, f, indent=4)
+            serialized = self.channel_po.copy()
+            for key in serialized:
+                if serialized[key] is not None:
+                    serialized[key] = [obj.json() for obj in serialized[key] if obj is not None]
+            json.dump(serialized, f, indent=4)
 
     def queue_execute_one_item(self):
         """
@@ -538,20 +568,42 @@ class autocontrol:
         :param task: (task.Task) The task.
         :return: no return value
         """
-        # Assign a sample number with regard to the submitted sample id. Check if the sample id has been submitted
-        # before.
-        if task.sample_number is None:
+
+        # Check sample number and id.
+        if task.sample_number is None and task.sample_id is None:
+            # no number or id given, defaults to sample number 0 and default id
+            task.sample_number = 1
+
+        if task.sample_number is not None and task.sample_id is not None:
+            if (task.sample_id not in self.sample_id_to_number and task.sample_number not in
+                    self.sample_id_to_number.values()):
+                # sample ID and number are both new
+                pass
+            elif task.sample_id in self.sample_id_to_number:
+                # sample number and id are old
+                if self.sample_id_to_number[task.sample_id] != task.sample_number:
+                    return "Task not submitted. Sample number and ID do not match previous submission."
+            else:
+                return "Task not submitted. Sample number and ID do not match previous submission."
+
+        elif task.sample_id is not None:
             # create a sample number if none present
             if not self.sample_id_to_number:
                 task.sample_number = 1
-                self.sample_id_to_number[task.sample_id] = task.sample_number
             else:
                 if task.sample_id in self.sample_id_to_number:
                     task.sample_number = self.sample_id_to_number[task.sample_id]
                 else:
-                    max_key = max(self.sample_id_to_number, key=self.sample_id_to_number.get)
-                    task.sample_number = self.sample_id_to_number[max_key]
-                    self.sample_id_to_number[task.sample_id] = task.sample_number
+                    task.sample_number = max(self.sample_id_to_number.values()) + 1
+        else:
+            # create a sample id
+            if task.sample_number in self.sample_id_to_number.values():
+                sitn = self.sample_id_to_number
+                task.sample_id = list(sitn.keys())[list(sitn.values()).index(task.sample_number)]
+            else:
+                task.sample_id = uuid.uuid4()
+
+        self.sample_id_to_number[task.sample_id] = task.sample_number
 
         # create a priority value with the following importance
         # 1. Sample number
@@ -564,6 +616,7 @@ class autocontrol:
         task.priority = priority
 
         self.queue.put(task)
+        return 'Task succesfully enqueued.'
 
     def update_active_tasks(self):
         """

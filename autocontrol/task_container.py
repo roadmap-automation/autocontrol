@@ -142,7 +142,7 @@ class TaskContainer:
         if result is not None:
             for entry in result:
                 # deserialize tasks and append to results list
-                ret.append(task_struct.Task.parse_raw(entry))
+                ret.append(task_struct.Task.parse_raw(entry[0]))
 
         cursor.close()
         conn.close()
@@ -182,9 +182,10 @@ class TaskContainer:
         # remove retrieved item
         ret = None
         if result is not None:
-            ret = task_struct.Task.parse_raw(result)
+            # there is ever only one item in this tuple
+            ret = task_struct.Task.parse_raw(result[0])
 
-            cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(ret.task_id)})
+            cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(ret.id)})
             conn.commit()
 
         cursor.close()

@@ -16,8 +16,7 @@ class Device(object):
 
     def communicate(self, command, value=0):
         """
-        Communicate with liquid handler and return response.
-
+        Communicate with device and return response.
         :param command: HTTP POST request command field
         :param value: HTTP POST request value field
         :return: status, response from HTTP POST or None if failed
@@ -36,7 +35,7 @@ class Device(object):
         response = rdict['result']
         return Status.SUCCESS, response
 
-    def execute_task(self, subtask, task_type):
+    def execute_task(self, task, task_type):
         """
         Routes tasks to the appropriate subroutines
         :param task: task to execute
@@ -44,23 +43,23 @@ class Device(object):
         :return: autocontrol status
         """
         if task_type == TaskType.INIT:
-            status, resp = self.init(subtask)
+            status, resp = self.init(task)
             return status, resp
 
         if task_type == TaskType.MEASURE:
-            status, resp = self.measure(subtask)
+            status, resp = self.measure(task)
             return status, resp
 
         if task_type == TaskType.PREPARE:
-            status, resp = self.prepare(subtask)
+            status, resp = self.prepare(task)
             return status, resp
 
         if task_type == TaskType.TRANSFER:
-            status, resp = self.transfer(subtask)
+            status, resp = self.transfer(task)
             return status, resp
 
         if task_type == TaskType.NOCHANNEL:
-            status, resp = self.no_channel(subtask)
+            status, resp = self.no_channel(task)
             return status, resp
 
         return Status.INVALID, "Do not recognize task type."

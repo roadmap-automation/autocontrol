@@ -33,6 +33,7 @@ class TaskData(BaseModel):
     md: dict = Field(default_factory=dict)
 
     # for init tasks
+    device_type: Optional[str] = None
     device_address: Optional[str] = None
     channel_mode: Optional[int] = None
     number_of_channels: int = 1
@@ -57,7 +58,7 @@ class Task(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     md: dict = Field(default_factory=dict)
     priority: Optional[float] = None
-    sample_id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4)
+    sample_id: Optional[uuid.UUID] = None
     sample_number: Optional[int] = None
     tasks: List[TaskData] = Field(default_factory=list)
     task_history: List[uuid.UUID] = Field(default_factory=list)

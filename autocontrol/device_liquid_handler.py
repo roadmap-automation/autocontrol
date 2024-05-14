@@ -30,7 +30,7 @@ class lh_device(Device):
         :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID, Status.BUSY
         """
         if self.test:
-            return Status.UP
+            return Status.IDLE
 
         # TODO: Implement for device
         return Status.TODO

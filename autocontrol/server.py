@@ -118,12 +118,12 @@ def queue_put():
     try:
         task = Task(**data)
         # put request in autocontrol queue
-        atc.queue_put(task=task)
+        retstr = atc.queue_put(task=task)
     except ValidationError as e:
         print("Failed to deserialize:", e)
-        return 'Failed to submit task'
+        retstr = 'Failed to submit task'
 
-    return 'Request succesfully enqueued.'
+    return retstr
 
 
 def start_server(host='0.0.0.0', port=5003, storage_path=None):

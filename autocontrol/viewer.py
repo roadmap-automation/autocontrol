@@ -4,6 +4,7 @@ import math
 import graphviz
 import json
 import os
+from task_struct import Task
 import time
 import uuid
 
@@ -42,7 +43,7 @@ def load_all(modflag):
     priority_queue = load_sql('priority_queue')
     active_queue = load_sql('active_queue')
     history_queue = load_sql('history_queue')
-    channel_po = load_json('channel_po')
+    channel_po = load_json_task_list('channel_po')
 
     td_frames = []
     if 'target_device' in priority_queue.columns:
@@ -73,9 +74,14 @@ def load_sql(filename):
     return df
 
 
-def load_json(filename):
+def load_json_task_list(filename):
     with open(os.path.join(storage_path, filename+'.json'), "r") as f:
         data = json.load(f)
+    ret = {}
+    for key in data:
+        for channel, entry in enumerate(data[key]):
+            # we do not convert back to a full Task object, just to a dictionary sufficient for visualization
+            data[key][channel] = json.loads(data[key][channel])
     return data
 
 
@@ -163,6 +169,7 @@ if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'
         for channel, entry in enumerate(channel_po[key]):
             if entry is not None:
                 channel_po_data.append(entry)
+                # st.info(entry)
                 entry['channel'] = channel
                 entry['device'] = key
     if channel_po_data:
