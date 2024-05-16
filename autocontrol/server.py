@@ -2,8 +2,10 @@ import autocontrol
 from flask import Flask
 from flask import request
 import json
+from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
+from task_struct import Task
 import time
 from werkzeug.serving import run_simple
 
@@ -95,24 +97,12 @@ def queue_put():
     POST request function that puts one task onto the Bluesky priorty queue.
 
     The POST data must contain the following data fields:
-    'task':                 (dict) A dictionary describing the task to be executed by the instrument. This field will be
-                            passed on to the instrument API.
-    'sample_number':        (int) An ascending sample ID.
-    'channel':              (int) Channel to be used in case parallel measurements are supported.
-    'md':                   (dict) Metadata to be saved with the measurement data.
-    'task_type':            (str) A generic label for different types of tasks affecting how they are prioritized.
-                            Options:
-                            'init', 'prepare', 'transfer', 'measure', 'shut down', 'exit'
-    'device':               (str) Name of the device executing the task.
-
-    For transfer tasks, additionally the following data fields are required:
-    'target_device':        (str) The name of the device the materialed is transferred to;
-    'target_channel':       (int) The channel on the target device to be used, auto-select if None.
+    'task':  (task.Task) The task.
 
     The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
     The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
     sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
-    tasks.
+    tasks. Sample numbers are derived from the sample_id upon first submission
 
     :return: Status string.
     """
@@ -124,27 +114,16 @@ def queue_put():
     if data is None or not isinstance(data, dict):
         return 'Error, no valid data received.'
 
-    # check for mandatory data fields
-    dfields = ['task', 'sample_number', 'task_type', 'device']
-    if not set(dfields).issubset(data):
-        return 'Error, not all mandatory datafields provided.'
+    # de-serialize the task data into a Task object
+    try:
+        task = Task(**data)
+        # put request in autocontrol queue
+        retstr = atc.queue_put(task=task)
+    except ValidationError as e:
+        print("Failed to deserialize:", e)
+        retstr = 'Failed to submit task'
 
-    # add defaults for non-mandatory fields:
-    if 'md' not in data:
-        data['md'] = {}
-    if 'channel' not in data:
-        data['channel'] = None
-    if 'target_device' not in data:
-        data['target_device'] = None
-    if 'target_channel' not in data:
-        data['target_channel'] = None
-
-    # put request in bluesky queue
-    atc.queue_put(task=data['task'], channel=data['channel'], md=data['md'], sample_number=data['sample_number'],
-                  task_type=data['task_type'], device=data['device'], target_device=data['target_device'],
-                  target_channel=data['target_channel'])
-
-    return 'Request succesfully enqueued.'
+    return retstr
 
 
 def start_server(host='0.0.0.0', port=5003, storage_path=None):

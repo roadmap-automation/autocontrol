@@ -2,11 +2,13 @@ import json
 import multiprocessing
 import os
 import requests
+import task_struct as tsk
 import server
 import signal
 import socket
 import subprocess
 import time
+import uuid
 
 port = 5003
 
@@ -27,12 +29,12 @@ def start_streamlit_viewer():
 
 def submit_task(task):
     print('\n')
-    print('Submitting Task: ' + task['device'] + ' ' + task['task_type'] + 'Sample: ' + str(task['sample_number']) +
-          '\n')
+    print('Submitting Task: ' + task.tasks[0].device + ' ' + task.task_type + 'Sample: ' + str(task.sample_id) + '\n')
     url = 'http://localhost:' + str(port) + '/put'
     headers = {'Content-Type': 'application/json'}
-    data = json.dumps(task)
+    data = task.json()
     response = requests.post(url, headers=headers, data=data)
+    print(response)
 
 
 def integration_test():
@@ -70,110 +72,123 @@ def integration_test():
     process.start()
 
     # ------------------ Submitting Task ----------------------------------
-    task = {
-        'task': {'description': 'QCMD init',
-                 'number_of_channels': 1},
-        'sample_number': 0,
-        'channel': None,
-        'md':  {},
-        'task_type': 'init',
-        'device': 'qcmd'
-    }
+
+    task = tsk.Task(
+        task_type=tsk.TaskType('init'),
+        tasks=[tsk.TaskData(
+            device='qcmd1',
+            device_type='qcmd',
+            device_address='https:hereitcomes',
+            number_of_channels=1,
+            simulated=True,
+            md={'description': 'QCMD init'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'lh init',
-                 'number_of_channels': 10},
-        'sample_number': 0,
-        'channel': None,
-        'md':  {},
-        'task_type': 'init',
-        'device': 'lh'
-    }
+    task = tsk.Task(
+        task_type=tsk.TaskType('init'),
+        tasks=[tsk.TaskData(
+            device='lh1',
+            device_type='lh',
+            device_address='https:hereitcomes',
+            number_of_channels=10,
+            simulated=True,
+            md={'description': 'lh init'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'Sample1 preparation'},
-        'sample_number': 1,
-        'channel': None,
-        'md':  {},
-        'task_type': 'prepare',
-        'device': 'lh'
-    }
+    sample_id1 = uuid.uuid4()
+    task = tsk.Task(
+        sample_id=sample_id1,
+        task_type=tsk.TaskType('prepare'),
+        tasks=[tsk.TaskData(
+            device='lh1',
+            md={'description': 'Sample1 preparation'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'Sample2 preparation'},
-        'sample_number': 2,
-        'channel': None,
-        'md':  {},
-        'task_type': 'prepare',
-        'device': 'lh'
-    }
+    sample_id2 = uuid.uuid4()
+    task = tsk.Task(
+        sample_id=sample_id2,
+        task_type=tsk.TaskType('prepare'),
+        tasks=[tsk.TaskData(
+            device='lh1',
+            md={'description': 'Sample2 preparation'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'Sample1 transfer'},
-        'sample_number': 1,
-        'channel': None,
-        'md':  {},
-        'task_type': 'transfer',
-        'device': 'lh',
-        'target_channel': None,
-        'target_device': 'qcmd'
-    }
+    task = tsk.Task(
+        sample_id=sample_id1,
+        task_type=tsk.TaskType('transfer'),
+        tasks=[
+            tsk.TaskData(
+                device='lh1',
+                md={'description': 'Sample1 transfer'}
+            ),
+            tsk.TaskData(
+                device='qcmd1',
+                md={'description': 'Sample1 transfer'}
+            )
+        ]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'Sample2 transfer',
-                 'force': True
-                 },
-        'sample_number': 2,
-        'channel': None,
-        'md':  {},
-        'task_type': 'transfer',
-        'device': 'lh',
-        'target_channel': None,
-        'target_device': 'qcmd'
-    }
+    task = tsk.Task(
+        sample_id=sample_id2,
+        task_type=tsk.TaskType('transfer'),
+        tasks=[
+            tsk.TaskData(
+                device='lh1',
+                md={'description': 'Sample2 transfer'}
+            ),
+            tsk.TaskData(
+                device='qcmd1',
+                md={'description': 'Sample2 transfer'}
+            )
+        ]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'QCMD measurement'},
-        'sample_number': 1,
-        'channel': None,
-        'md':  {},
-        'task_type': 'measure',
-        'device': 'qcmd'
-    }
+    task = tsk.Task(
+        sample_id=sample_id1,
+        task_type=tsk.TaskType('measure'),
+        tasks=[tsk.TaskData(
+            device='qcmd1',
+            md={'description': 'QCMD measurement sample1'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'QCMD measurement'},
-        'sample_number': 2,
-        'channel': None,
-        'md':  {},
-        'task_type': 'measure',
-        'device': 'qcmd'
-    }
+    task = tsk.Task(
+        sample_id=sample_id2,
+        task_type=tsk.TaskType('measure'),
+        tasks=[tsk.TaskData(
+            device='qcmd1',
+            md={'description': 'QCMD measurement sample2'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 
-    task = {
-        'task': {'description': 'LH rinse'},
-        'sample_number': 1,
-        'channel': None,
-        'md':  {},
-        'task_type': 'no_channel',
-        'device': 'lh'
-    }
+    task = tsk.Task(
+        sample_id=sample_id1,
+        task_type=tsk.TaskType('nochannel'),
+        tasks=[tsk.TaskData(
+            device='lh1',
+            md={'description': 'lh rinse'}
+        )]
+    )
     submit_task(task)
     time.sleep(5)
 

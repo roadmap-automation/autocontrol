@@ -4,6 +4,7 @@ import math
 import graphviz
 import json
 import os
+from task_struct import Task
 import time
 import uuid
 
@@ -42,7 +43,7 @@ def load_all(modflag):
     priority_queue = load_sql('priority_queue')
     active_queue = load_sql('active_queue')
     history_queue = load_sql('history_queue')
-    channel_po = load_json('channel_po')
+    channel_po = load_json_task_list('channel_po')
 
     td_frames = []
     if 'target_device' in priority_queue.columns:
@@ -73,14 +74,19 @@ def load_sql(filename):
     return df
 
 
-def load_json(filename):
+def load_json_task_list(filename):
     with open(os.path.join(storage_path, filename+'.json'), "r") as f:
         data = json.load(f)
+    ret = {}
+    for key in data:
+        for channel, entry in enumerate(data[key]):
+            # we do not convert back to a full Task object, just to a dictionary sufficient for visualization
+            data[key][channel] = json.loads(data[key][channel])
     return data
 
 
-def render_cluster(data, graph, name='0', color='grey'):
-    def create_uuid(id_first_node, id_last_node):
+def render_cluster(data, graph, name='0', color='grey', show_device=False):
+    def create_uuid(id_first_node):
         # find unique node id
         while True:
             idstr = str(uuid.uuid4())
@@ -100,14 +106,16 @@ def render_cluster(data, graph, name='0', color='grey'):
 
         if data is not None and not data.empty:
             for index, row in data[::-1].iterrows():
-                idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
+                idstr, id_first_node, id_last_node = create_uuid(id_first_node)
                 if row['channel'] is not None and not math.isnan(row['channel']):
                     label = 'S' + str(row['sample_number']) + ' C' + str(int(row['channel'])) + '\n' + row['task_type']
                 else:
                     label = 'S' + str(row['sample_number']) + '\n' + row['task_type']
+                if show_device:
+                    label += '\n' + row['device']
                 c.node(idstr, label=label)
         else:
-            idstr, id_first_node, id_last_node = create_uuid(id_first_node, id_last_node)
+            idstr, id_first_node, id_last_node = create_uuid(id_first_node)
             c.node(idstr, label=' ', style='invisible')
 
     return id_first_node, id_last_node
@@ -135,7 +143,7 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
             if entry[0] in edge_nodes and entry[1] in edge_nodes:
                 g.edge(edge_nodes[entry[0]][1], edge_nodes[entry[1]][0])
     else:
-        render_cluster(data, g, name=filename, color=color)
+        render_cluster(data, g, name=filename, color=color, show_device=True)
     g.render(filename=os.path.join(storage_path, filename), format='png')
 
 
@@ -161,6 +169,7 @@ if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'
         for channel, entry in enumerate(channel_po[key]):
             if entry is not None:
                 channel_po_data.append(entry)
+                # st.info(entry)
                 entry['channel'] = channel
                 entry['device'] = key
     if channel_po_data:
@@ -181,9 +190,10 @@ st.text('Sample Occupancy Diagram')
 st.image(os.path.join(storage_path, 'cpo_data.png'))
 
 # visualize dataframes in tables
-co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel", "md")
+co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel",
+           "task", "md")
 co_conf = {"sample_number": "sample",
-                            "task_type": "task",
+                            "task_type": "task type",
                             "md": "meta data",
                             "target_device": "target device",
                             "target_channel": "target channel"
