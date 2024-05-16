@@ -44,6 +44,7 @@ class TaskContainer:
     def _create_table(self):
 
         self.lock.acquire()
+        # note: creates a new db file if it does not exist
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
