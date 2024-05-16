@@ -41,7 +41,8 @@ def integration_test():
     print('Starting integration test')
 
     print('Preparing test directory')
-    storage_path = '../test/'
+    cfd = os.path.dirname(os.path.abspath(__file__))
+    storage_path = os.path.join(cfd, '..', 'test')
     for filename in os.listdir(storage_path):
         file_path = os.path.join(storage_path, filename)
         try:

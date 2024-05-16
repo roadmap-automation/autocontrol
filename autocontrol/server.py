@@ -2,6 +2,7 @@ import autocontrol
 from flask import Flask
 from flask import request
 import json
+import os
 from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
@@ -130,9 +131,12 @@ def start_server(host='0.0.0.0', port=5003, storage_path=None):
     def app_start():
         run_simple('localhost', port, app)
 
+    if storage_path is None:
+        storage_path = os.getcwd()
+
     # initialize bluesky API
     global atc
-    atc = autocontrol.autocontrol(storage_path=None)
+    atc = autocontrol.autocontrol(storage_path=storage_path)
 
     # start the background thread
     global bg_thread

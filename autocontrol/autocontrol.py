@@ -49,16 +49,14 @@ def merge_dict(dict1=None, dict2=None):
 
 
 class autocontrol:
-    def __init__(self, storage_path=None):
+    def __init__(self, storage_path):
 
         # accepts only sample preparations
         self.prepare_only = False
+        self.storage_path = storage_path
 
         # Queues and containers
         # Priority, active, and history queues
-        if storage_path is None:
-            self.storage_path = '../test/'
-
         db_path_queue = os.path.join(self.storage_path, 'priority_queue.sqlite3')
         db_path_history = os.path.join(self.storage_path, 'history_queue.sqlite3')
         db_path_active = os.path.join(self.storage_path, 'active_queue.sqlite3')

@@ -27,7 +27,7 @@ def analyze_df_for_device_pairs(df):
 
 def file_mod_time():
     def tconv(filename):
-        time1 = os.path.getmtime(os.path.join(storage_path) + filename)
+        time1 = os.path.getmtime(os.path.join(storage_path, filename))
         mod_time_datetime = datetime.datetime.fromtimestamp(time1)
         human_readable_mod_time = mod_time_datetime.strftime("%Y-%m-%d %H:%M:%S")
         return human_readable_mod_time
@@ -159,7 +159,8 @@ def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag):
 
 
 identifier_list = []
-storage_path = '../test/'
+cfd = os.path.dirname(os.path.abspath(__file__))
+storage_path = os.path.join(cfd, '..', 'test')
 
 file_mod_date = file_mod_time()
 if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
