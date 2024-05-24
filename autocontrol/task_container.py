@@ -151,11 +151,12 @@ class TaskContainer:
 
         return ret
 
-    def get_and_remove_by_priority(self, task_type=None):
+    def get_and_remove_by_priority(self, task_type=None, remove=True):
         """
         Retrieves the highest priority item from the container. If the task type is provided it will return the highest
         priority item with the given task type. If there is no match or the container is empty, returns None.
         :param task_type: (str or list) task type or list of task types
+        :param remove: (bool) flag whether to remove the highest priority item from the queue
         :return: item or None
         """
 
@@ -186,8 +187,10 @@ class TaskContainer:
             # there is ever only one item in this tuple
             ret = task_struct.Task.parse_raw(result[0])
 
-            cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(ret.id)})
-            conn.commit()
+            # remove task if flag is set
+            if remove:
+                cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(ret.id)})
+                conn.commit()
 
         cursor.close()
         conn.close()
@@ -229,18 +232,27 @@ class TaskContainer:
         conn.close()
         self.lock.release()
 
-    def remove(self, task):
+    def remove(self, task=None, task_id=None):
         """
         Removes a task from the SQLite database using the unique 'priority' field of the task
-        :param task: Task to remove from the SQLite database
+        :param task: The task to remove
+        :param task_id: (uuid) ID of the task to remove
         :return: no return value
         """
+        # Do not do anything if missing or contradicting IDs
+        if task is None and task_id is None:
+            return
+        if task is not None and task_id is not None and task.id != task_id:
+            return
+
+        if task is not None:
+            task_id = task.id
+
         self.lock.acquire()
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM task_table WHERE priority=:priority",
-                       {'priority': task.priority})
+        cursor.execute("DELETE FROM task_table WHERE task_id=:id", {'id': str(task_id)})
         conn.commit()
 
         cursor.close()

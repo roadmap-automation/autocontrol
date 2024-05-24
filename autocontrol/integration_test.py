@@ -1,7 +1,10 @@
 import autocontrol.task_struct as tsk
+import autocontrol.start
 import json
 import multiprocessing
 import os
+import platform
+import psutil
 import requests
 import server
 import signal
@@ -10,7 +13,7 @@ import subprocess
 import time
 import uuid
 
-port = 5003
+port = 5004
 
 
 def print_queue():
@@ -43,34 +46,9 @@ def integration_test():
     print('Preparing test directory')
     cfd = os.path.dirname(os.path.abspath(__file__))
     storage_path = os.path.join(cfd, '..', 'test')
-    for filename in os.listdir(storage_path):
-        file_path = os.path.join(storage_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-        except Exception as e:
-            print(f'Failed to delete {file_path}. Reason: {e}')
 
-    hostname = socket.gethostname()
-    try:
-        IPAddr = socket.gethostbyname(hostname)
-        print(f"IP Address of {hostname} is {IPAddr}")
-    except socket.gaierror:
-        print(f"Could not resolve hostname: {hostname}. Check your network settings.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-    # ------------------ Starting Flask Server----------------------------------
-    print("Starting Flask Server")
-    server.start_server(host='localhost', port=port, storage_path=storage_path)
-
-    print('Waiting for 2 seconds.')
-    time.sleep(5)
-
-    # ------------------ Starting Streamlit Monitor----------------------------------
-    print("Starting Streamlit Viewer")
-    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path,))
-    process.start()
+    # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
+    autocontrol.start.start(portnumber=port, storage_path=storage_path)
 
     # ------------------ Submitting Task ----------------------------------
 
@@ -194,25 +172,35 @@ def integration_test():
     time.sleep(5)
 
     # ------------------ Stopping Flask Server ----------------------------------
-    print('\n')
-    print('Stopping Flask')
-    url = 'http://localhost:' + str(port) + '/shutdown'
-    headers = {'Content-Type': 'application/json'}
-    data = json.dumps({'wait_for_queue_to_empty': True})
-    response = requests.post(url, headers=headers, data=data)
+    autocontrol.start.stop(portnumber=port)
     time.sleep(5)
 
     print('Integration test done.')
     print('Program exit.')
 
     # Wait for user input
-    user_input = input("Please enter some text and press Enter to stop all processes: ")
+    _ = input("Please enter some text and press Enter to stop all processes: ")
+
+
+def terminate_processes():
+    # Get the current platform
+    current_platform = platform.system()
+
+    if current_platform == "Windows":
+        # On Windows, use psutil to iterate over child processes and terminate them
+        current_process = psutil.Process(os.getpid())
+        children = current_process.children(recursive=True)
+        for child in children:
+            child.terminate()
+        gone, still_alive = psutil.wait_procs(children, timeout=3)
+        for p in still_alive:
+            p.kill()
+    else:
+        # On Unix-based systems, use os.killpg to terminate the process group
+        pgid = os.getpgid(os.getpid())
+        os.killpg(pgid, signal.SIGTERM)
 
 
 if __name__ == '__main__':
     integration_test()
-    # UNIX-style termination of all child processes including the test Flask server
-    # Get the process group ID of the current process
-    pgid = os.getpgid(os.getpid())
-    # Send a SIGTERM signal to the process group to terminate all child processes
-    os.killpg(pgid, signal.SIGTERM)
+    terminate_processes()
