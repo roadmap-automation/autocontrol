@@ -1,22 +1,25 @@
-import json
 import multiprocessing
 import os
-import requests
-import task_struct as tsk
 import server
 import signal
 import socket
 import subprocess
 import time
-import uuid
 
 port = 5004
+
 
 def start_streamlit_viewer():
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
     result = subprocess.run(['streamlit', 'run', viewer_path])
 
-def start():
+
+def start(portnumber=5004):
+    """
+    Starts the autocontrol server.
+    :param portnumber: port number of the server.
+    :return: no return value
+    """
     print('Preparing test directory')
     cfd = os.path.dirname(os.path.abspath(__file__))
     storage_path = os.path.join(cfd, '..', 'test')
@@ -39,7 +42,7 @@ def start():
 
     # ------------------ Starting Flask Server----------------------------------
     print("Starting Flask Server")
-    server.start_server(host='localhost', port=port, storage_path=storage_path)
+    server.start_server(host='localhost', port=portnumber, storage_path=storage_path)
 
     print('Waiting for 2 seconds.')
     time.sleep(5)
@@ -51,7 +54,7 @@ def start():
 
 
 if __name__ == '__main__':
-    start()
+    start(portnumber=port)
     # UNIX-style termination of all child processes including the test Flask server
     # Get the process group ID of the current process
     pgid = os.getpgid(os.getpid())
