@@ -530,14 +530,12 @@ class autocontrol:
                          [TaskType.SHUTDOWN]]
         response = ''
         blocked_samples = []
-        unsuccesful_jobs = []
-        success = False
 
         i = 0
         while i < len(task_priority):
             task_type = task_priority[i]
             # retrieve job from queue
-            task = self.queue.get_and_remove_by_priority(task_type=task_type)
+            task = self.queue.get_and_remove_by_priority(task_type=task_type, remove=False)
             if task is None:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1
@@ -545,18 +543,13 @@ class autocontrol:
                 success, task, response = self.process_task(task)
                 task.md['submission_response'] = response
                 if success:
+                    # remove task from queue
+                    self.queue.remove(task_id=task.id)
                     # a succesful job ends the execution of this method
                     break
                 else:
                     # this sample number is now blocked as processing of the job was not successful
                     blocked_samples.append(task.sample_number)
-                    unsuccesful_jobs.append(task)
-            else:
-                unsuccesful_jobs.append(task)
-
-        # put unsuccessful jobs back in the queue
-        for job in unsuccesful_jobs:
-            self.queue.put(job)
 
         return response
 

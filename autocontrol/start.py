@@ -1,7 +1,8 @@
+import autocontrol.server as server
+import json
 import multiprocessing
 import os
-import autocontrol.server as server
-import signal
+import requests
 import socket
 import subprocess
 import time
@@ -60,10 +61,19 @@ def start(portnumber=5004, storage_path=None):
     process.start()
 
 
+def stop(portnumber=5004, wait_for_queue_to_empty=True):
+    print('\n')
+    print('Stopping Flask')
+    url = 'http://localhost:' + str(portnumber) + '/shutdown'
+    headers = {'Content-Type': 'application/json'}
+    data = json.dumps({'wait_for_queue_to_empty': wait_for_queue_to_empty})
+    response = requests.post(url, headers=headers, data=data)
+    return response
+
+
 if __name__ == '__main__':
     start(portnumber=port)
-    # UNIX-style termination of all child processes including the test Flask server
-    # Get the process group ID of the current process
-    pgid = os.getpgid(os.getpid())
-    # Send a SIGTERM signal to the process group to terminate all child processes
-    os.killpg(pgid, signal.SIGTERM)
+    # Wait for user input
+    print("Autocontrol started.")
+    _ = input("Please enter some text and press Enter to stop autocontrol ")
+    stop(portnumber=port)

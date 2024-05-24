@@ -6,4 +6,7 @@ sqlalchemy
 streamlit
 pandas
 graphviz
+psutil
 pydantic
+setuptools
+autocontrol
