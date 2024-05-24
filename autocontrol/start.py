@@ -1,6 +1,6 @@
 import multiprocessing
 import os
-import server
+import autocontrol.server as server
 import signal
 import socket
 import subprocess
@@ -9,20 +9,27 @@ import time
 port = 5004
 
 
-def start_streamlit_viewer():
+def start_streamlit_viewer(storage_path):
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
-    result = subprocess.run(['streamlit', 'run', viewer_path])
+    result = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path])
 
 
-def start(portnumber=5004):
+def start(portnumber=5004, storage_path=None):
     """
     Starts the autocontrol server.
-    :param portnumber: port number of the server.
+    :param portnumber: port number of the server
+    :param storage_path: directory to save task databases
     :return: no return value
     """
     print('Preparing test directory')
-    cfd = os.path.dirname(os.path.abspath(__file__))
-    storage_path = os.path.join(cfd, '..', 'test')
+    if storage_path is None:
+        storage_path = os.path.join(os.getcwd(), "atc_test")
+        print("Defaulting to current directory for test directory: {}".format(storage_path))
+    else:
+        print("Path for test directory is {}".format(storage_path))
+    if not os.path.isdir(storage_path):
+        os.mkdir(storage_path)
+
     for filename in os.listdir(storage_path):
         file_path = os.path.join(storage_path, filename)
         try:
@@ -48,8 +55,8 @@ def start(portnumber=5004):
     time.sleep(5)
 
     # ------------------ Starting Streamlit Monitor----------------------------------
-    print("Starting Streamlit Viewer")
-    process = multiprocessing.Process(target=start_streamlit_viewer)
+    print("Starting Streamlit Viewer with storage path: {}".format(storage_path))
+    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path,))
     process.start()
 
 

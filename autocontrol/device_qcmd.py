@@ -1,8 +1,8 @@
-from device import Device
+from autocontrol.status import Status
+from autocontrol.device import Device
 import json
 import time as ttime
 import requests
-from status import Status
 
 
 class open_QCMD(Device):

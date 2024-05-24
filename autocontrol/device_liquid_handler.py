@@ -1,7 +1,6 @@
-from device import Device
+from autocontrol.status import Status
+from autocontrol.device import Device
 import time as ttime
-
-from status import Status
 
 
 class lh_device(Device):

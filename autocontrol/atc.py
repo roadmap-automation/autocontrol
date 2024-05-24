@@ -4,11 +4,11 @@ import math
 import os
 import uuid
 
-from device_qcmd import open_QCMD
-from task_container import TaskContainer
-from task_struct import TaskType
-from device_liquid_handler import lh_device
-from status import Status
+from autocontrol.device_qcmd import open_QCMD
+from autocontrol.task_container import TaskContainer
+from autocontrol.task_struct import TaskType
+from autocontrol.device_liquid_handler import lh_device
+from autocontrol.status import Status
 
 
 def generate_new_dict_key(base_key, dictionary):

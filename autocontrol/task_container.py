@@ -2,12 +2,12 @@ import json
 import sqlite3
 import threading
 
-import task_struct
+import autocontrol.task_struct as task_struct
 
 
 class TaskContainer:
     """
-    A simple storage and retrieval class for tasks used in autocontrol.py based on SQLite.
+    A simple storage and retrieval class for tasks used in atc.py based on SQLite.
     """
     def __init__(self, db_path=':memory:'):
         """

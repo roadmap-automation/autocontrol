@@ -1,5 +1,4 @@
 from pydantic import BaseModel, field_validator, Field, field_serializer
-import pydantic
 from typing import Type, Optional, List
 from enum import Enum
 import uuid
