@@ -1,4 +1,4 @@
-import autocontrol
+import autocontrol.atc as autocontrol_atc
 from flask import Flask
 from flask import request
 import json
@@ -6,7 +6,7 @@ import os
 from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
-from task_struct import Task
+from autocontrol.task_struct import Task
 import time
 from werkzeug.serving import run_simple
 
@@ -14,7 +14,7 @@ app = Flask(__name__)
 # shutdown signal
 app_shutdown = False
 # intialize global variables
-atc: Optional[autocontrol.autocontrol] = None
+atc: Optional[autocontrol_atc.autocontrol] = None
 bg_thread: Optional[Thread] = None
 
 
@@ -136,7 +136,7 @@ def start_server(host='0.0.0.0', port=5003, storage_path=None):
 
     # initialize bluesky API
     global atc
-    atc = autocontrol.autocontrol(storage_path=storage_path)
+    atc = autocontrol_atc.autocontrol(storage_path=storage_path)
 
     # start the background thread
     global bg_thread

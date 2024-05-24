@@ -1,15 +1,15 @@
+import argparse
 import datetime
 import math
 
 import graphviz
 import json
 import os
-from task_struct import Task
 import time
 import uuid
-
-import streamlit as st
 import pandas as pd
+import streamlit as st
+import sys
 
 st.set_page_config(layout="wide")
 
@@ -25,7 +25,7 @@ def analyze_df_for_device_pairs(df):
     return result
 
 
-def file_mod_time():
+def file_mod_time(storage_path):
     def tconv(filename):
         time1 = os.path.getmtime(os.path.join(storage_path, filename))
         mod_time_datetime = datetime.datetime.fromtimestamp(time1)
@@ -39,11 +39,11 @@ def file_mod_time():
 
 
 @st.cache_data
-def load_all(modflag):
-    priority_queue = load_sql('priority_queue')
-    active_queue = load_sql('active_queue')
-    history_queue = load_sql('history_queue')
-    channel_po = load_json_task_list('channel_po')
+def load_all(modflag, storage_path):
+    priority_queue = load_sql('priority_queue', storage_path)
+    active_queue = load_sql('active_queue', storage_path)
+    history_queue = load_sql('history_queue', storage_path)
+    channel_po = load_json_task_list('channel_po', storage_path)
 
     td_frames = []
     if 'target_device' in priority_queue.columns:
@@ -61,7 +61,7 @@ def load_all(modflag):
     return priority_queue, active_queue, history_queue, channel_po, edges
 
 
-def load_sql(filename):
+def load_sql(filename, storage_path):
     # load status from SQLlite databases
     localhost = "sqlite:///"
     absolute_path = os.path.abspath(os.path.join(storage_path, filename+'.sqlite3'))
@@ -74,7 +74,7 @@ def load_sql(filename):
     return df
 
 
-def load_json_task_list(filename):
+def load_json_task_list(filename, storage_path):
     with open(os.path.join(storage_path, filename+'.json'), "r") as f:
         data = json.load(f)
     ret = {}
@@ -85,7 +85,7 @@ def load_json_task_list(filename):
     return data
 
 
-def render_cluster(data, graph, name='0', color='grey', show_device=False):
+def render_cluster(data, graph, identifier_list, name='0', color='grey', show_device=False):
     def create_uuid(id_first_node):
         # find unique node id
         while True:
@@ -121,7 +121,7 @@ def render_cluster(data, graph, name='0', color='grey', show_device=False):
     return id_first_node, id_last_node
 
 
-def render_data(data, color, filename, split_by_device=False, edges=None):
+def render_data(data, color, filename, identifier_list, channel_po, split_by_device=False, edges=None, storage_path=''):
     g = graphviz.Digraph('gvg')
     if split_by_device:
         edge_nodes = {}
@@ -129,13 +129,13 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
         # render initialized devices that do not have active tasks
         for key in list(channel_po.keys()):
             if key not in grouped.groups:
-                first, last = render_cluster(None, g, name=key, color='lightgreen')
+                first, last = render_cluster(None, g, identifier_list, name=key, color='lightgreen')
                 edge_nodes[key] = [first, last]
         # render each active device separately
         for device in grouped.groups:
             device_df = grouped.get_group(device)
             # st.dataframe(device_df)
-            first, last = render_cluster(device_df, g, name=device, color='lightgreen')
+            first, last = render_cluster(device_df, g, identifier_list, name=device, color='lightgreen')
             edge_nodes[device] = [first, last]
         for entry in edges:
             # draw edge from last to first node in the two clusters that should be connected given in the
@@ -143,70 +143,90 @@ def render_data(data, color, filename, split_by_device=False, edges=None):
             if entry[0] in edge_nodes and entry[1] in edge_nodes:
                 g.edge(edge_nodes[entry[0]][1], edge_nodes[entry[1]][0])
     else:
-        render_cluster(data, g, name=filename, color=color, show_device=True)
+        render_cluster(data, g, identifier_list=identifier_list, name=filename, color=color, show_device=True)
     g.render(filename=os.path.join(storage_path, filename), format='png')
 
 
 @st.cache_data
-def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag):
-    render_data(pdata, color='lightblue', filename='priority_queue')
-    render_data(adata, color='lightgreen', filename='active_queue', split_by_device=True, edges=edges)
-    render_data(hdata, color='orange', filename='history_queue')
-    render_data(cpodata, color='lightgreen', filename='cpo_data', split_by_device=True, edges=edges)
+def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifier_list, channel_po,
+                      storage_path=''):
+    render_data(pdata, color='lightblue', filename='priority_queue', identifier_list=identifier_list,
+                channel_po=channel_po, storage_path=storage_path)
+    render_data(adata, color='lightgreen', filename='active_queue', identifier_list=identifier_list,
+                channel_po=channel_po, split_by_device=True, edges=edges, storage_path=storage_path)
+    render_data(hdata, color='orange', filename='history_queue', identifier_list=identifier_list,
+                channel_po=channel_po, storage_path=storage_path)
+    render_data(cpodata, color='lightgreen', filename='cpo_data', identifier_list=identifier_list,
+                channel_po=channel_po, split_by_device=True, edges=edges, storage_path=storage_path)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # --------------------------------------------- Streamlit Page Start --------------------------------------------------
 
 
-identifier_list = []
-cfd = os.path.dirname(os.path.abspath(__file__))
-storage_path = os.path.join(cfd, '..', 'test')
+def main(storage_path=None):
+    identifier_list = []
+    if storage_path is None:
+        cfd = os.path.dirname(os.path.abspath(__file__))
+        storage_path = os.path.join(cfd, '..', 'test')
 
-file_mod_date = file_mod_time()
-if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
-    priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time())
-    channel_po_data = []
-    for key in channel_po:
-        for channel, entry in enumerate(channel_po[key]):
-            if entry is not None:
-                channel_po_data.append(entry)
-                # st.info(entry)
-                entry['channel'] = channel
-                entry['device'] = key
-    if channel_po_data:
-        channel_po_data = pd.DataFrame(channel_po_data)
-    else:
-        channel_po_data = pd.DataFrame(columns=priority_queue.columns)
-    render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges, file_mod_time())
+    file_mod_date = file_mod_time(storage_path)
+    if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
+        priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time(storage_path),
+                                                                                  storage_path=storage_path)
+        channel_po_data = []
+        for key in channel_po:
+            for channel, entry in enumerate(channel_po[key]):
+                if entry is not None:
+                    channel_po_data.append(entry)
+                    # st.info(entry)
+                    entry['channel'] = channel
+                    entry['device'] = key
+        if channel_po_data:
+            channel_po_data = pd.DataFrame(channel_po_data)
+        else:
+            channel_po_data = pd.DataFrame(columns=priority_queue.columns)
+        render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
+                          file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
+                          storage_path=storage_path)
 
-st.title('Autocontrol Viewer')
+    st.title('Autocontrol Viewer')
 
-# create flow chart via graphviz
-st.text('Task Diagram')
-st.image(os.path.join(storage_path, 'priority_queue.png'))
-st.image(os.path.join(storage_path, 'active_queue.png'))
-st.image(os.path.join(storage_path, 'history_queue.png'))
+    # create flow chart via graphviz
+    st.text('Task Diagram')
+    st.image(os.path.join(storage_path, 'priority_queue.png'))
+    st.image(os.path.join(storage_path, 'active_queue.png'))
+    st.image(os.path.join(storage_path, 'history_queue.png'))
 
-st.text('Sample Occupancy Diagram')
-st.image(os.path.join(storage_path, 'cpo_data.png'))
+    st.text('Sample Occupancy Diagram')
+    st.image(os.path.join(storage_path, 'cpo_data.png'))
 
-# visualize dataframes in tables
-co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel",
-           "task", "md")
-co_conf = {"sample_number": "sample",
-                            "task_type": "task type",
-                            "md": "meta data",
-                            "target_device": "target device",
-                            "target_channel": "target channel"
-           }
-st.text('Queued Jobs:')
-st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
-st.text('Active Jobs:')
-st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
-st.text('Finished Jobs:')
-st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    # visualize dataframes in tables
+    co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel",
+               "task", "md")
+    co_conf = {"sample_number": "sample",
+                                "task_type": "task type",
+                                "md": "meta data",
+                                "target_device": "target device",
+                                "target_channel": "target channel"
+               }
+    st.text('Queued Jobs:')
+    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    st.text('Active Jobs:')
+    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    st.text('Finished Jobs:')
+    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
 
-# if st.button('Reload', type="primary"):
-time.sleep(10)
-# st.cache_data.clear()
-st.rerun()
+    # if st.button('Reload', type="primary"):
+    time.sleep(10)
+    # st.cache_data.clear()
+    st.rerun()
+
+
+if __name__ == '__main__':
+    # sys.argv = sys.argv[:1] + sys.argv[2:]  # Streamlit adds extra args; this line removes them
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--storage_dir', type=str, default=os.getcwd(), help='Path to storage directory')
+    args = parser.parse_args()
+    storage_dir = args.storage_dir
+
+    main(storage_path=storage_dir)

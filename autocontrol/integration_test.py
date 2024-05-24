@@ -1,8 +1,8 @@
+import autocontrol.task_struct as tsk
 import json
 import multiprocessing
 import os
 import requests
-import task_struct as tsk
 import server
 import signal
 import socket
@@ -22,9 +22,9 @@ def print_queue():
     response = requests.get(url, headers=headers, data=data)
 
 
-def start_streamlit_viewer():
+def start_streamlit_viewer(storage_path):
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
-    result = subprocess.run(['streamlit', 'run', viewer_path])
+    result = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path])
 
 
 def submit_task(task):
@@ -69,7 +69,7 @@ def integration_test():
 
     # ------------------ Starting Streamlit Monitor----------------------------------
     print("Starting Streamlit Viewer")
-    process = multiprocessing.Process(target=start_streamlit_viewer)
+    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path,))
     process.start()
 
     # ------------------ Submitting Task ----------------------------------

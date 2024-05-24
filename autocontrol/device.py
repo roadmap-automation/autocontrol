@@ -1,7 +1,8 @@
+from autocontrol.task_struct import TaskType
+from autocontrol.status import Status
 import json
 import requests
-from task_struct import TaskType
-from status import Status
+
 
 
 class Device(object):
