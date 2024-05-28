@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class Status(Enum):
+class Status(int, Enum):
     SUCCESS = 0
     ERROR = 1
     WARNING = 2
