@@ -5,7 +5,7 @@ import json
 import time as ttime
 
 
-class lh_device(Device):
+class injection_device(Device):
     """
     This class implements a injection device interface for autocontrol.
     """
