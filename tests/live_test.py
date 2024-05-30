@@ -22,7 +22,7 @@ def live_test():
         tasks=[tsk.TaskData(
             device='injection1',
             device_type='injection',
-            device_address='http://localhost:',
+            device_address='http://localhost:5003',
             number_of_channels=2,
             simulated=False,
             md={'description': 'injection device init'}
