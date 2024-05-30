@@ -13,10 +13,19 @@ class Status(int, Enum):
     DOWN = 8
 
 
-def get_status_member(status_str):
+def get_status_member(status_input):
     """
-    Returns a Status member from a string.
-    :param status_str: string representation
+    Returns a Status member from a string or integer.
+    :param status_input: string or integer representation
     :return: Status member
     """
-    return Status.__members__.get(status_str.upper(), None)
+    if isinstance(status_input, int):
+        try:
+            return Status(status_input)
+        except ValueError:
+            return None
+    elif isinstance(status_input, str):
+        return Status.__members__.get(status_input.upper(), None)
+    else:
+        return None
+
