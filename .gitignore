@@ -1,3 +1,8 @@
+# testing
+atc_test/
+test/
+test_storage/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
