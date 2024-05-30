@@ -542,7 +542,8 @@ class autocontrol:
         while i < len(task_priority):
             task_type = task_priority[i]
             # retrieve job from queue
-            task = self.queue.get_and_remove_by_priority(task_type=task_type, remove=False)
+            task = self.queue.get_and_remove_by_priority(task_type=task_type, remove=False,
+                                                         blocked_samples=blocked_samples)
             if task is None:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1

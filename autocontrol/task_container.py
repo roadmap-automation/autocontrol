@@ -151,7 +151,7 @@ class TaskContainer:
 
         return ret
 
-    def get_and_remove_by_priority(self, task_type=None, remove=True):
+    def get_and_remove_by_priority(self, task_type=None, remove=True, blocked_samples=None):
         """
         Retrieves the highest priority item from the container. If the task type is provided it will return the highest
         priority item with the given task type. If there is no match or the container is empty, returns None.
@@ -164,19 +164,35 @@ class TaskContainer:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        if task_type is None:
-            query = "SELECT task FROM task_table ORDER BY priority DESC LIMIT 1"
-        elif isinstance(task_type, str):
-            query = "SELECT task FROM task_table WHERE task_type='" + task_type + "' ORDER BY priority DESC LIMIT 1"
-        elif isinstance(task_type, list):
-            task_type_str = "','".join(task_type)
-            query = ("SELECT task FROM task_table WHERE task_type IN ('" + task_type_str +
-                     "') ORDER BY priority DESC LIMIT 1")
+        if blocked_samples is None:
+            if task_type is None:
+                query = "SELECT task FROM task_table ORDER BY priority DESC LIMIT 1"
+            elif isinstance(task_type, str):
+                query = "SELECT task FROM task_table WHERE task_type='" + task_type + "' ORDER BY priority DESC LIMIT 1"
+            elif isinstance(task_type, list):
+                task_type_str = "','".join(task_type)
+                query = ("SELECT task FROM task_table WHERE task_type IN ('" + task_type_str +
+                         "') ORDER BY priority DESC LIMIT 1")
+            else:
+                cursor.close()
+                conn.close()
+                self.lock.release()
+                return None
         else:
-            cursor.close()
-            conn.close()
-            self.lock.release()
-            return None
+            bss = [str(i) for i in blocked_samples]
+            blocked_samples_str = "','".join(bss)
+            if task_type is None:
+                query = f"SELECT task FROM task_table WHERE sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+            elif isinstance(task_type, str):
+                query = f"SELECT task FROM task_table WHERE task_type='{task_type}' AND sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+            elif isinstance(task_type, list):
+                task_type_str = "','".join(task_type)
+                query = f"SELECT task FROM task_table WHERE task_type IN ('{task_type_str}') AND sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+            else:
+                cursor.close()
+                conn.close()
+                self.lock.release()
+                return None
 
         cursor.execute(query)
         result = cursor.fetchone()

@@ -23,8 +23,6 @@ def background_task():
     Flask server background task comprising an infinite loop executing one task of the Bluesky queue at a time.
     :return: No return value.
     """
-    print('Enter background task execution')
-    print(app_shutdown)
     while not app_shutdown:
         # check on all active tasks and handle if they are finished
         atc.update_active_tasks()
