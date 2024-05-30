@@ -168,21 +168,3 @@ def stop_server():
         print('Shutting down server after waiting for queue to empty.')
         response = shutdown_server(wait_for_queue_to_empty=data['wait_for_queue_to_empty'])
     return response
-
-
-if __name__ == '__main__':
-    start_server(host='0.0.0.0', port=5003)
-
-
-"""
-import requests
-
-url = "https://example.com/api"
-data = {"name": "John", "age": 25}
-
-response = requests.post(url, data=data)
-
-print(response.status_code)
-print(response.json())
-
-"""

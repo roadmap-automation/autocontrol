@@ -2,12 +2,13 @@ import autocontrol.server as server
 import json
 import multiprocessing
 import os
+import platform
+import psutil
 import requests
+import signal
 import socket
 import subprocess
 import time
-
-port = 5004
 
 
 def start_streamlit_viewer(storage_path):
@@ -71,7 +72,38 @@ def stop(portnumber=5004, wait_for_queue_to_empty=True):
     return response
 
 
+def submit_task(task, port):
+    print('\n')
+    print('Submitting Task: ' + task.tasks[0].device + ' ' + task.task_type + 'Sample: ' + str(task.sample_id) + '\n')
+    url = 'http://localhost:' + str(port) + '/put'
+    headers = {'Content-Type': 'application/json'}
+    data = task.json()
+    response = requests.post(url, headers=headers, data=data)
+    print(response)
+    return response
+
+
+def terminate_processes():
+    # Get the current platform
+    current_platform = platform.system()
+
+    if current_platform == "Windows":
+        # On Windows, use psutil to iterate over child processes and terminate them
+        current_process = psutil.Process(os.getpid())
+        children = current_process.children(recursive=True)
+        for child in children:
+            child.terminate()
+        gone, still_alive = psutil.wait_procs(children, timeout=3)
+        for p in still_alive:
+            p.kill()
+    else:
+        # On Unix-based systems, use os.killpg to terminate the process group
+        pgid = os.getpgid(os.getpid())
+        os.killpg(pgid, signal.SIGTERM)
+
+
 if __name__ == '__main__':
+    port = 5004
     start(portnumber=port)
     # Wait for user input
     print("Autocontrol started.")
