@@ -31,7 +31,7 @@ def background_task():
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
         atc.queue_execute_one_item()
         # sleep for some time before
-        time.sleep(10)
+        time.sleep(1)
 
 
 def shutdown_server(wait_for_queue_to_empty=False):

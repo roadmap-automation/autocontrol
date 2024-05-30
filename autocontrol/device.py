@@ -35,10 +35,13 @@ class Device(object):
             if method.upper() == 'POST':
                 response = requests.post(url, headers=headers, data=data)
             elif method.upper() == 'GET':
-                response = requests.get(url, headers=headers, params=data)
+                #print('GET request to {} with {}'.format(url, data))
+                response = requests.get(url, headers=headers, data=data)
+                #print('Here is the response: ', response.text)
             else:
                 return Status.INVALID, 'Invalid HTTP method specified'
         except requests.exceptions.RequestException:
+            #print('Exception occurred')
             return Status.ERROR, 'Exception occurred while communicating with device.'
 
         if response.status_code != 200:
@@ -92,7 +95,7 @@ class Device(object):
         if len(channel_status) <= channel:
             return Status.ERROR
 
-        ret = autocontrol.status.get_status_member(device_status[channel])
+        ret = autocontrol.status.get_status_member(channel_status[channel])
         if ret is None:
             ret = Status.ERROR
 

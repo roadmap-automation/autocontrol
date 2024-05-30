@@ -35,7 +35,7 @@ class TaskData(BaseModel):
     device_type: Optional[str] = None
     device_address: Optional[str] = None
     channel_mode: Optional[int] = None
-    number_of_channels: int = 1
+    number_of_channels: int | None = None
     simulated: bool = False
 
     # for measurement tasks

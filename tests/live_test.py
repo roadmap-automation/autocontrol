@@ -33,13 +33,48 @@ def live_test():
     sample_id1 = uuid.uuid4()
     task = tsk.Task(
         sample_id=sample_id1,
+        task_type=tsk.TaskType('prepare'),
+        tasks=[tsk.TaskData(
+            device='injection1',
+            method_data={'method_list': [{'method_name': 'RoadmapChannelSleep', 'method_data': {'sleep_time': 40}}]},
+            md={'description': 'dummy prepare sleep'}
+        )]
+    )
+    autocontrol.start.submit_task(task, port)
+
+    sample_id2 = uuid.uuid4()
+    task = tsk.Task(
+        sample_id=sample_id2,
+        task_type=tsk.TaskType('prepare'),
+        tasks=[tsk.TaskData(
+            device='injection1',
+            method_data={'method_list': [{'method_name': 'RoadmapChannelSleep', 'method_data': {'sleep_time': 5}}]},
+            md={'description': 'dummy prepare sleep'}
+        )]
+    )
+    autocontrol.start.submit_task(task, port)
+
+    task = tsk.Task(
+        sample_id=sample_id1,
         task_type=tsk.TaskType('measure'),
         tasks=[tsk.TaskData(
             device='injection1',
-            method_data={'method_name': 'RoadmapChannelSleep', 'method_dat': {'sleep_time': 10}},
+            method_data={'method_list': [{'method_name': 'RoadmapChannelSleep', 'method_data': {'sleep_time': 10}}]},
             md={'description': 'dummy sleep'}
         )]
     )
+    autocontrol.start.submit_task(task, port)
+
+    task = tsk.Task(
+        sample_id=sample_id2,
+        task_type=tsk.TaskType('measure'),
+        tasks=[tsk.TaskData(
+            device='injection1',
+            method_data={'method_list': [{'method_name': 'RoadmapChannelSleep', 'method_data': {'sleep_time': 10}}]},
+            md={'description': 'dummy sleep'}
+        )]
+    )
+    
     autocontrol.start.submit_task(task, port)
 
     # ------------------ Stopping Flask Server ----------------------------------

@@ -428,6 +428,7 @@ class autocontrol:
                 device = self.get_device_object(subtask.device)
                 status, resp = device.execute_task(task=subtask, task_type=task.task_type)
                 subtask.md['submission_response'] = resp
+                print('Execute task response: ', resp)
                 if status != Status.SUCCESS:
                     task_success = False
 
@@ -550,6 +551,7 @@ class autocontrol:
             elif task.sample_number not in blocked_samples:
                 success, task, response = self.process_task(task)
                 task.md['submission_response'] = response
+                print('Task response: ', response)
                 if success:
                     # remove task from queue
                     self.queue.remove(task_id=task.id)

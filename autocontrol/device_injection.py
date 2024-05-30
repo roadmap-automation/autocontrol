@@ -36,7 +36,7 @@ class injection_device(Device):
         # injection devices have two hard-coded channels
         if subtask.number_of_channels is not None and subtask.number_of_channels != 2:
             return Status.INVALID, 'Number of channels must be 2 for an injection device.'
-        self.number_of_channels = subtask.number_of_channels
+        self.number_of_channels = subtask.number_of_channels if subtask.number_of_channels is not None else 2
 
         return Status.SUCCESS, 'Injection device initialized.'
 
@@ -45,8 +45,8 @@ class injection_device(Device):
             return self.standard_test_response(subtask)
 
         status = self.get_device_status()
-        if status != Status.UP:
-            return Status.ERROR, 'Device is not up.'
+        if status != Status.IDLE:
+            return Status.ERROR, 'Device is not idle.'
 
         status, ret = self.communicate('/SubmitTask', subtask.json())
 
