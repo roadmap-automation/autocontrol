@@ -3,7 +3,7 @@ import autocontrol.start
 import os
 import uuid
 
-port = 5004
+port = 5014
 
 
 def live_test():
@@ -42,9 +42,15 @@ def live_test():
     )
     autocontrol.start.submit_task(task, port)
 
+    # ------------------ Stopping Flask Server ----------------------------------
+    autocontrol.start.stop(portnumber=port)
+    print('Integration test done.')
+    print('Program exit.')
+
+    # Wait for user input
+    _ = input("Please enter some text and press Enter to stop all processes: ")
+
 
 if __name__ == '__main__':
     live_test()
-    # Wait for user input
-    _ = input("Please enter some text and press Enter to stop all processes: ")
     autocontrol.start.terminate_processes()
