@@ -33,7 +33,7 @@ def live_test():
     sample_id1 = uuid.uuid4()
     task = tsk.Task(
         sample_id=sample_id1,
-        task_type=tsk.TaskType('nochannel'),
+        task_type=tsk.TaskType('measure'),
         tasks=[tsk.TaskData(
             device='injection1',
             method_data={'method_name': 'RoadmapChannelSleep', 'method_dat': {'sleep_time': 10}},

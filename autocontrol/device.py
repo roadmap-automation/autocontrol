@@ -1,3 +1,4 @@
+import autocontrol.status
 from autocontrol.task_struct import TaskType
 from autocontrol.status import Status
 import requests
@@ -14,29 +15,35 @@ class Device(object):
         # hard-coded test flag
         self.test = simulated
 
-    def communicate(self, command, data):
+    def communicate(self, command, data=None, method='POST'):
         """
-        Communicate with device and return response via HTTP POST. Can be replaced by sub-classes.
-        :param command: HTTP POST request command field
-        :param data: HTTP POST request value field
-        :return: status, response from HTTP POST or None if failed
+        Communicate with device and return response via HTTP POST or GET. Can be replaced by subclasses.
+
+        :param command: HTTP request command field
+        :param data: HTTP request data for POST or parameters for GET
+        :param method: HTTP method ('POST' or 'GET')
+        :return: status, response from HTTP request or None if failed
         """
 
         if self.address is None:
-            return Status.INVALID, 'No address for device'
+            return Status.INVALID, 'No address for device.'
 
         url = self.address + command
         headers = {'Content-Type': 'application/json'}
 
         try:
-            response = requests.post(url, headers=headers, data=data)
+            if method.upper() == 'POST':
+                response = requests.post(url, headers=headers, data=data)
+            elif method.upper() == 'GET':
+                response = requests.get(url, headers=headers, params=data)
+            else:
+                return Status.INVALID, 'Invalid HTTP method specified'
         except requests.exceptions.RequestException:
             return Status.ERROR, 'Exception occurred while communicating with device.'
+
         if response.status_code != 200:
             return Status.ERROR, response.text
 
-        # rdict = json.loads(response.text)
-        # response = rdict['result']
         return Status.SUCCESS, response.text
 
     def execute_task(self, task, task_type):
@@ -72,16 +79,48 @@ class Device(object):
         """
         Retrieves the status of a channel.
         :param channel: 	(int) default=0, the channel to be used.
-        :return status: 	(Status) Status.IDLE or Status.BUSY
+        :return status: 	(Status) channel status
         """
-        return Status.INVALID
+        if self.test:
+            return Status.IDLE
+
+        request_status, device_status = self.get_status()
+        if request_status != Status.SUCCESS:
+            return Status.ERROR
+
+        channel_status = device_status['channel_status']
+        if len(channel_status) <= channel:
+            return Status.ERROR
+
+        ret = autocontrol.status.get_status_member(device_status[channel])
+        if ret is None:
+            ret = Status.ERROR
+
+        return ret
 
     def get_device_status(self):
         """
         Retrieves the status of a device independent of its channels
-        :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID
+        :return status: (Status) device status
         """
-        return Status.INVALID
+        if self.test:
+            return Status.IDLE
+
+        request_status, device_status = self.get_status()
+        if request_status != Status.SUCCESS:
+            return Status.ERROR
+
+        ret = autocontrol.status.get_status_member(device_status['status'])
+        if ret is None:
+            ret = Status.ERROR
+        return ret
+
+    def get_status(self):
+        """
+        Placeholder for device-specific status retrieval functions.
+        :return: status of the request, status dictionary from the device if successful
+        """
+        return Status.TODO, {}
 
     def init(self, subtask):
         self.address = subtask.device_address
@@ -98,22 +137,42 @@ class Device(object):
             else:
                 noc = 1
             self.number_of_channels = noc
-            return Status.SUCCESS, ''
+            return Status.SUCCESS, 'Simulated device initialized.'
 
-        return Status.INVALID, ''
+        return Status.INVALID, 'Method not implemented'
 
-    def measure(self, task):
-        return Status.INVALID, ''
+    def measure(self, subtask):
+        return self.standard_task(subtask)
 
-    def no_channel(self, task):
+    def no_channel(self, subtask):
+        return self.standard_task(subtask)
+
+    def prepare(self, subtask):
+        return self.standard_task(subtask)
+
+    def read(self, channel=None):
+        """
+        If a device has no read function, this method provides compatibility to submit measurement methods that
+        will yield an empty readout. Thereby, processing steps or wait steps on a per-channel basis can be implemented.
+
+        :return: empty dictionary
+        """
+
+        ddict = {}
+        return Status.SUCCESS, ddict
+
+    def standard_task(self, subtask):
+        if self.test:
+            return self.standard_test_response(subtask)
+
+        return Status.INVALID, 'Method not implemented.'
+
+    def standard_test_response(self, subtask):
         if self.test:
             ttime.sleep(5)
             return Status.SUCCESS, ''
 
         return Status.INVALID, ''
 
-    def prepare(self, task):
-        return Status.INVALID, ''
-
-    def transfer(self, task):
-        return Status.INVALID, ''
+    def transfer(self, subtask):
+        return self.standard_task(subtask)

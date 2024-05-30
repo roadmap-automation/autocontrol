@@ -1,4 +1,4 @@
-import autocontrol.task_struct
+import autocontrol.status
 from autocontrol.status import Status
 from autocontrol.device import Device
 import json
@@ -7,31 +7,24 @@ import time as ttime
 
 class lh_device(Device):
     """
-    This class implements a liquid handler device interface for autocontrol.
+    This class implements a injection device interface for autocontrol.
     """
-
-    def get_channel_status(self, channel):
+    def get_status(self):
         """
-        Retrieves the status of a channel.
-        :param channel: 	(int) default=0, the channel to be used.
-        :return status: 	(Status) Status.IDLE or Status.BUSY
+        Communicates with the device to determine its status.
+        :return: status of the request, status dictionary from the device if successful
         """
-        if self.test:
-            return Status.IDLE
+        status, ret = self.communicate('/GetStatus', method='GET')
+        if status == Status.SUCCESS:
+            try:
+                retdict = json.loads(ret)
+            except json.JSONDecodeError:
+                status = Status.ERROR
+                retdict = None
+        else:
+            retdict = None
 
-        # TODO: Implement for device
-        return Status.TODO
-
-    def get_device_status(self):
-        """
-        Retrieves the status of a device independent of its channels
-        :return status: (Status) Status.UP, Status.DOWN, Status.ERROR, Status.INVALID, Status.BUSY
-        """
-        if self.test:
-            return Status.IDLE
-
-        # TODO: Implement for device
-        return Status.TODO
+        return status, retdict
 
     def init(self, subtask):
         if self.test:
@@ -45,14 +38,11 @@ class lh_device(Device):
             return Status.INVALID, 'Number of channels must be 2 for an injection device.'
         self.number_of_channels = subtask.number_of_channels
 
-        return Status.SUCCESS, ''
+        return Status.SUCCESS, 'Injection device initialized.'
 
-    def no_channel(self, subtask: autocontrol.task_struct.TaskData):
+    def standard_task(self, subtask):
         if self.test:
-            return super().init(subtask)
-
-        # TODO: Implement a channel-less task -> see documentation
-        #   Make sure to set the entire device to BUSY during task execution and back to UP when done.
+            return self.standard_test_response(subtask)
 
         status = self.get_device_status()
         if status != Status.UP:
@@ -62,32 +52,3 @@ class lh_device(Device):
 
         return status, ret
 
-    def prepare(self, subtask):
-        if self.test:
-            ttime.sleep(5)
-            return Status.SUCCESS, ''
-
-        # TODO: Implement prepare -> see documentation
-
-        # if liquid handler is busy, do not start new measurement
-        status = self.get_device_status()
-        if status != Status.UP:
-            return Status.ERROR, ''
-        # status = self.communicate("start")
-        return Status.TODO, ''
-
-    def transfer(self, subtask):
-        if self.test:
-            ttime.sleep(5)
-            return Status.SUCCESS, ''
-
-        # TODO: Implement transfer -> see documentation
-        #   Do not forget to mark the source or target channel as busy for a channel-based transfer
-        #   Mark the entire device as busy for a non-channel based transfer
-
-        # if liquid handler is busy, do not start new measurement
-        status = self.get_device_status()
-        if status != Status.UP:
-            return Status.ERROR, ''
-
-        return Status.TODO, ''
