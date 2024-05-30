@@ -4,11 +4,14 @@ import math
 import os
 import uuid
 
-from autocontrol.device_qcmd import open_QCMD
 from autocontrol.task_container import TaskContainer
 from autocontrol.task_struct import TaskType
-from autocontrol.device_liquid_handler import lh_device
 from autocontrol.status import Status
+
+# device imports
+from autocontrol.device_injection import injection_device
+from autocontrol.device_liquid_handler import lh_device
+from autocontrol.device_qcmd import open_QCMD
 
 
 def generate_new_dict_key(base_key, dictionary):
@@ -213,7 +216,9 @@ class autocontrol:
         device_address = task.tasks[0].device_address
         simulated = task.tasks[0].simulated
 
-        if device_type == 'lh' or device_type == 'LH':
+        if device_type == 'injection' or device_type == 'INJECTION':
+            device_object = injection_device(name=device_name, address=device_address, simulated=simulated)
+        elif device_type == 'lh' or device_type == 'LH':
             device_object = lh_device(name=device_name, address=device_address, simulated=simulated)
         elif device_type == 'qcmd' or device_type == 'QCMD':
             device_object = open_QCMD(name=device_name, address=device_address, simulated=simulated)
@@ -248,7 +253,7 @@ class autocontrol:
         sample_number = task.sample_number
 
         if subtask.channel is None:
-            # Source channel is not defined. Locate the sampel based on sample number. If there are multiple,
+            # Source channel is not defined. Locate the sample based on sample number. If there are multiple,
             # measure the one with the highest priority
             best_channel = None
             for i, channel_task in enumerate(cpol):

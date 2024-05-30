@@ -31,21 +31,12 @@ class open_QCMD(Device):
         return Status.TODO
 
     def init(self, subtask):
+        if self.test:
+            return super().init(subtask)
+
         self.address = subtask.device_address
         self.number_of_channels = subtask.number_of_channels
         self.channel_mode = subtask.channel_mode
-
-        if self.test:
-            if subtask.number_of_channels is not None:
-                noc = subtask.number_of_channels
-                if noc is None or noc < 2:
-                    noc = 1
-                else:
-                    noc = int(noc)
-            else:
-                noc = 1
-            self.number_of_channels = noc
-            return Status.SUCCESS, ''
 
         # TODO: Implement device initialization
         #  number of channels from task['channel']

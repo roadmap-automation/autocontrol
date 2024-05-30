@@ -1,8 +1,7 @@
 from autocontrol.task_struct import TaskType
 from autocontrol.status import Status
-import json
 import requests
-
+import time as ttime
 
 
 class Device(object):
@@ -15,26 +14,30 @@ class Device(object):
         # hard-coded test flag
         self.test = simulated
 
-    def communicate(self, command, value=0):
+    def communicate(self, command, data):
         """
-        Communicate with device and return response.
+        Communicate with device and return response via HTTP POST. Can be replaced by sub-classes.
         :param command: HTTP POST request command field
-        :param value: HTTP POST request value field
+        :param data: HTTP POST request value field
         :return: status, response from HTTP POST or None if failed
         """
-        if self.address is None:
-            return Status.INVALID, None
-        cmdstr = '{"command": "' + str(command) + '", "value": ' + str(value) + '}'
-        try:
-            r = requests.post(self.address, cmdstr)
-        except requests.exceptions.RequestException:
-            return Status.ERROR, None
-        if r.status_code != 200:
-            return Status.ERROR, None
 
-        rdict = json.loads(r.text)
-        response = rdict['result']
-        return Status.SUCCESS, response
+        if self.address is None:
+            return Status.INVALID, 'No address for device'
+
+        url = self.address + command
+        headers = {'Content-Type': 'application/json'}
+
+        try:
+            response = requests.post(url, headers=headers, data=data)
+        except requests.exceptions.RequestException:
+            return Status.ERROR, 'Exception occurred while communicating with device.'
+        if response.status_code != 200:
+            return Status.ERROR, response.text
+
+        # rdict = json.loads(response.text)
+        # response = rdict['result']
+        return Status.SUCCESS, response.text
 
     def execute_task(self, task, task_type):
         """
@@ -80,13 +83,33 @@ class Device(object):
         """
         return Status.INVALID
 
-    def init(self, task):
+    def init(self, subtask):
+        self.address = subtask.device_address
+        self.channel_mode = subtask.channel_mode
+
+        # generic response for testing
+        if self.test:
+            if subtask.number_of_channels is not None:
+                noc = subtask.number_of_channels
+                if noc is None or noc < 2:
+                    noc = 1
+                else:
+                    noc = int(noc)
+            else:
+                noc = 1
+            self.number_of_channels = noc
+            return Status.SUCCESS, ''
+
         return Status.INVALID, ''
 
     def measure(self, task):
         return Status.INVALID, ''
 
     def no_channel(self, task):
+        if self.test:
+            ttime.sleep(5)
+            return Status.SUCCESS, ''
+
         return Status.INVALID, ''
 
     def prepare(self, task):

@@ -1,5 +1,7 @@
+import autocontrol.task_struct
 from autocontrol.status import Status
 from autocontrol.device import Device
+import json
 import time as ttime
 
 
@@ -35,26 +37,30 @@ class lh_device(Device):
         if self.test:
             return super().init(subtask)
 
-        # TODO: Implement device initialization -> see documentation
         self.address = subtask.device_address
-        self.number_of_channels = subtask.number_of_channels
         self.channel_mode = subtask.channel_mode
 
-        return Status.TODO, ''
+        # injection devices have two hard-coded channels
+        if subtask.number_of_channels is not None and subtask.number_of_channels != 2:
+            return Status.INVALID, 'Number of channels must be 2 for an injection device.'
+        self.number_of_channels = subtask.number_of_channels
 
-    def no_channel(self, subtask):
+        return Status.SUCCESS, ''
+
+    def no_channel(self, subtask: autocontrol.task_struct.TaskData):
         if self.test:
-            ttime.sleep(5)
-            return Status.SUCCESS, ''
+            return super().init(subtask)
 
         # TODO: Implement a channel-less task -> see documentation
         #   Make sure to set the entire device to BUSY during task execution and back to UP when done.
 
         status = self.get_device_status()
         if status != Status.UP:
-            return Status.ERROR, ''
+            return Status.ERROR, 'Device is not up.'
 
-        return Status.TODO, ''
+        status, ret = self.communicate('/SubmitTask', subtask.json())
+
+        return status, ret
 
     def prepare(self, subtask):
         if self.test:
