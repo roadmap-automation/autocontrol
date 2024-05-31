@@ -274,3 +274,17 @@ class TaskContainer:
         cursor.close()
         conn.close()
         self.lock.release()
+
+    def replace(self, task, task_id=None):
+        """
+        Replaces a task in the SQLite database using the unique 'task_id' field of the task
+        :param task: replacement task
+        :param task_id: task id
+        :return: no return value
+        """
+        if task_id is None:
+            return
+        self.remove(task_id=task_id)
+        self.put(task=task)
+        return
+
