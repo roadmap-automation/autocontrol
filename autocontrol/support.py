@@ -72,6 +72,17 @@ def stop(portnumber=5004, wait_for_queue_to_empty=True):
     return response
 
 
+def get_task_status(task_id, port):
+    print('\n')
+    print('Requesting status for task ID: ' + str(task_id) + '\n')
+    url = 'http://localhost:' + str(port) + '/get_task_status'
+    headers = {'Content-Type': 'application/json'}
+    data = {'task_id': str(task_id)}
+    response = requests.get(url, headers=headers, params=data)
+    print(response, response.text)
+    return response
+
+
 def submit_task(task, port):
     print('\n')
     print('Submitting Task: ' + task.tasks[0].device + ' ' + task.task_type + 'Sample: ' + str(task.sample_id) + '\n')
@@ -79,7 +90,7 @@ def submit_task(task, port):
     headers = {'Content-Type': 'application/json'}
     data = task.json()
     response = requests.post(url, headers=headers, data=data)
-    print(response)
+    print(response, response.text)
     return response
 
 

@@ -214,6 +214,28 @@ class TaskContainer:
 
         return ret
 
+    def get_task_by_id(self, task_id):
+        """
+        Retrieves a task by its ID without removing it from the container.
+        :param task_id: (str or UUID4) the task id
+        :return: the task or None
+        """
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT task FROM task_table WHERE task_id=:id", {'id': str(task_id)})
+        result = cursor.fetchone()
+        if result is not None:
+            # there is ever only one item in this tuple
+            result = task_struct.Task.parse_raw(result[0])
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        return result
+
     def put(self, task):
         """
         Stores a task in the SQLite database
