@@ -155,24 +155,25 @@ def queue_put():
 
     :return: Status string.
     """
-
     if request.method != 'POST':
-        return 'Error, request method is not POST.'
+        abort(400, description='Request method is not POST.')
 
     data = request.get_json()
     if data is None or not isinstance(data, dict):
-        return 'Error, no valid data received.'
+        abort(400, description='No valid data received.')
 
     # de-serialize the task data into a Task object
     try:
         task = Task(**data)
         # put request in autocontrol queue
-        retstr = atc.queue_put(task=task)
-    except ValidationError as e:
-        print("Failed to deserialize:", e)
-        retstr = 'Failed to submit task'
+        success, description = atc.queue_put(task=task)
+    except ValidationError:
+        abort(400, description='Failed to deserialize task.')
 
-    return retstr
+    if not success:
+        abort(400, description=description)
+
+    return description
 
 
 def start_server(host='0.0.0.0', port=5003, storage_path=None):

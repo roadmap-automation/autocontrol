@@ -568,7 +568,7 @@ class autocontrol:
         This is an external API method.
         Puts a task into the priority queue.
         :param task: (task.Task) The task.
-        :return: no return value
+        :return: (Bool, str) success flag, descriptionn
         """
 
         # Check sample number and id.
@@ -584,9 +584,9 @@ class autocontrol:
             elif task.sample_id in self.sample_id_to_number:
                 # sample number and id are old
                 if self.sample_id_to_number[task.sample_id] != task.sample_number:
-                    return "Task not submitted. Sample number and ID do not match previous submission."
+                    return False, "Task not submitted. Sample number and ID do not match previous submission."
             else:
-                return "Task not submitted. Sample number and ID do not match previous submission."
+                return False, "Task not submitted. Sample number and ID do not match previous submission."
 
         elif task.sample_id is not None:
             # create a sample number if none present
@@ -618,7 +618,7 @@ class autocontrol:
         task.priority = priority
 
         self.queue.put(task)
-        return 'Task succesfully enqueued.'
+        return True, 'Task succesfully enqueued.'
 
     def update_active_tasks(self):
         """
