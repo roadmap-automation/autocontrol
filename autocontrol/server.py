@@ -120,7 +120,7 @@ def index():
 
     :return: Status string
     """
-    return 'Bluesky Flask Server Started!'
+    return 'Autocontrol Flask Server Started!'
 
 
 @app.route('/queue_inspect', methods=['GET'])
@@ -207,7 +207,7 @@ def stop_server():
     """
 
     if request.method != 'POST':
-        return 'Error, request method is not POST.'
+        abort(400, description='Request method is not POST.')
 
     data = request.get_json()
     if 'wait_for_queue_to_empty' not in data:
