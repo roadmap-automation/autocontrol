@@ -1,3 +1,5 @@
+from autocontrol import task_struct
+
 import argparse
 import datetime
 import math
@@ -83,6 +85,24 @@ def load_json_task_list(filename, storage_path):
             # we do not convert back to a full Task object, just to a dictionary sufficient for visualization
             data[key][channel] = json.loads(data[key][channel])
     return data
+
+
+def replace_priority_with_int(df):
+    df = df.sort_values(by='priority', ascending=False).reset_index(drop=True)
+    df['priority'] = range(1, len(df) + 1)
+    return df
+
+
+def retrieve_md_key(row, key_str='submission_respone'):
+    status = ''
+    task = row['task']
+    if task is not None:
+        # there is ever only one item in this tuple
+        task = task_struct.Task.parse_raw(task)
+    if task.md is not None:
+        if key_str in task.md:
+            status = task.md[key_str]
+    return status
 
 
 def render_cluster(data, graph, identifier_list, name='0', color='grey', show_device=False):
@@ -185,9 +205,25 @@ def main(storage_path=None):
             channel_po_data = pd.DataFrame(channel_po_data)
         else:
             channel_po_data = pd.DataFrame(columns=priority_queue.columns)
+
         render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
                           file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
                           storage_path=storage_path)
+
+        # add a status column to each data frame for visualization
+        priority_queue['status'] = ''
+        active_queue['status'] = ''
+        history_queue['status'] = ''
+
+        if not priority_queue.empty:
+            priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row,key_str='submission_response'), axis=1)
+        if not active_queue.empty:
+            active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'), axis=1)
+
+        # replace priority values by integers
+        priority_queue = replace_priority_with_int(priority_queue)
+        active_queue = replace_priority_with_int(active_queue)
+        history_queue = replace_priority_with_int(history_queue)
 
     st.title('Autocontrol Viewer')
 
@@ -201,20 +237,31 @@ def main(storage_path=None):
     st.image(os.path.join(storage_path, 'cpo_data.png'))
 
     # visualize dataframes in tables
-    co_list = ("id", "priority", "sample_number", "task_type", "device", "channel", "target_device", "target_channel",
-               "task", "md")
+    co_list = (
+        #"id",
+        "priority",
+        "sample_number",
+        "task_type",
+        "device",
+        "channel",
+        "status",
+        #"target_device",
+        #"target_channel",
+        "task",
+        #"md"
+    )
     co_conf = {"sample_number": "sample",
                                 "task_type": "task type",
-                                "md": "meta data",
-                                "target_device": "target device",
-                                "target_channel": "target channel"
+                                # "md": "meta data",
+                                # "target_device": "target device",
+                                # "target_channel": "target channel"
                }
     st.text('Queued Jobs:')
-    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
     st.text('Active Jobs:')
-    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
     st.text('Finished Jobs:')
-    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True)
+    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
 
     # if st.button('Reload', type="primary"):
     time.sleep(10)

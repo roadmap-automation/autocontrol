@@ -79,7 +79,7 @@ def get_task_status(task_id, port):
     headers = {'Content-Type': 'application/json'}
     data = {'task_id': str(task_id)}
     response = requests.get(url, headers=headers, params=data)
-    print(response, response.text)
+    # print(response, response.text)
     return response
 
 

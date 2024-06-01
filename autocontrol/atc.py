@@ -99,16 +99,12 @@ class autocontrol:
                 status = device.get_device_status()
                 if status != Status.IDLE:
                     # device is not ready to accept new commands and therefore, the current one is not finished
-                    print('Checked device {} for task completion. Device status is {}.'.format(subtask.device,
-                                                                                               status.name))
                     return False
             else:
                 # get channel-dependent status
                 channel_status = device.get_channel_status(subtask.channel)
                 if channel_status != Status.IDLE:
                     # task not done
-                    print('Checked device {}, channel {} for task completion. Channel status is {}'.format(
-                        subtask.device, subtask.channe, channel_status.name))
                     return False
         # passed all tests, task has been finished
         return True

@@ -79,10 +79,6 @@ def live_test():
     )
     autocontrol.support.submit_task(task, port)
 
-    for _ in range(10):
-        autocontrol.support.get_task_status(task_id=task_id1, port=port)
-        ttime.sleep(10)
-
     # ------------------ Stopping Flask Server ----------------------------------
     autocontrol.support.stop(portnumber=port)
     print('Integration test done.')
