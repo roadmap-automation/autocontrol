@@ -1,10 +1,11 @@
 import autocontrol.task_struct as tsk
-import autocontrol.start
+import autocontrol.support
 import os
 import time
 import uuid
 
 port = 5004
+
 
 def integration_test():
     print('Starting integration test')
@@ -14,7 +15,7 @@ def integration_test():
     storage_path = os.path.join(cfd, '..', 'test_storage')
 
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
-    autocontrol.start.start(portnumber=port, storage_path=storage_path)
+    autocontrol.support.start(portnumber=port, storage_path=storage_path)
 
     # ------------------ Submitting Task ----------------------------------
 
@@ -29,7 +30,7 @@ def integration_test():
             md={'description': 'QCMD init'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -43,7 +44,7 @@ def integration_test():
             md={'description': 'lh init'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     sample_id1 = uuid.uuid4()
@@ -55,7 +56,7 @@ def integration_test():
             md={'description': 'Sample1 preparation'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     sample_id2 = uuid.uuid4()
@@ -67,7 +68,7 @@ def integration_test():
             md={'description': 'Sample2 preparation'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -84,7 +85,7 @@ def integration_test():
             )
         ]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -101,7 +102,7 @@ def integration_test():
             )
         ]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -112,7 +113,7 @@ def integration_test():
             md={'description': 'QCMD measurement sample1'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -123,7 +124,7 @@ def integration_test():
             md={'description': 'QCMD measurement sample2'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     task = tsk.Task(
@@ -134,11 +135,11 @@ def integration_test():
             md={'description': 'lh rinse'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
     time.sleep(5)
 
     # ------------------ Stopping Flask Server ----------------------------------
-    autocontrol.start.stop(portnumber=port)
+    autocontrol.support.stop(portnumber=port)
     time.sleep(5)
 
     print('Integration test done.')
@@ -149,4 +150,4 @@ if __name__ == '__main__':
     integration_test()
     # Wait for user input
     _ = input("Please enter some text and press Enter to stop all processes: ")
-    autocontrol.start.terminate_processes()
+    autocontrol.support.terminate_processes()

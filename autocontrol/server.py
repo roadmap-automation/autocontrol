@@ -1,6 +1,6 @@
 import autocontrol.atc as autocontrol_atc
 from flask import Flask
-from flask import request
+from flask import abort, request
 import json
 import os
 from pydantic import ValidationError
@@ -31,7 +31,7 @@ def background_task():
         # We do not need to keep track of this here and will just reattempt again until the server is stopped.
         atc.queue_execute_one_item()
         # sleep for some time before
-        time.sleep(1)
+        time.sleep(5)
 
 
 def shutdown_server(wait_for_queue_to_empty=False):
@@ -63,6 +63,54 @@ def shutdown_server(wait_for_queue_to_empty=False):
         func()
 
     return 'Server shut down.'
+
+
+@app.route('/get_task_status', methods=['GET'])
+def get_task_status():
+    """
+    Identifies the status of a task in the queue. Expects a json-like dict with the key 'task_id' with the request.
+    :return: dictionary {'queue': 'scheduled', 'active', 'history',
+                         'submission response': (str)
+                         'subtasks submission response': [str]
+                         }
+    """
+    task_id = request.args.get('task_id', None)
+
+    if task_id is None:
+        abort(400, description='No task id provided.')
+    if atc is None:
+        abort(400, description="No autocontrol instance found.")
+
+    task_scheduled = atc.queue.get_task_by_id(task_id)
+    task_active = atc.active_tasks.get_task_by_id(task_id)
+    task_history = atc.sample_history.get_task_by_id(task_id)
+
+    retval = {}
+    if task_history is not None:
+        task = task_history
+        retval['queue'] = 'history'
+    elif task_active is not None:
+        task = task_active
+        retval['queue'] = 'active'
+    elif task_scheduled is not None:
+        task = task_scheduled
+        retval['queue'] = 'scheduled'
+    else:
+        abort(400, description="No task found.")
+
+    if task.md is not None and 'submission_response' in task.md:
+        retval['submission_response'] = task.md['submission_response']
+    else:
+        retval['submission_response'] = ''
+
+    retval['subtasks_submission_response'] = []
+    for subtask in task.tasks:
+        if subtask.md is not None and 'submission_response' in subtask.md:
+            retval['subtasks_submission_response'].append(subtask.md['submission_response'])
+        else:
+            retval['subtasks_submission_response'].append('')
+
+    return json.dumps(retval)
 
 
 @app.route('/')

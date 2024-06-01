@@ -1,6 +1,7 @@
 import autocontrol.task_struct as tsk
-import autocontrol.start
+import autocontrol.support
 import os
+import time as ttime
 import uuid
 
 port = 5014
@@ -14,7 +15,7 @@ def live_test():
     storage_path = os.path.join(cfd, '..', 'test_storage')
 
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
-    autocontrol.start.start(portnumber=port, storage_path=storage_path)
+    autocontrol.support.start(portnumber=port, storage_path=storage_path)
 
     # ----------- Submitting tasks ---------------------------
     task = tsk.Task(
@@ -28,11 +29,13 @@ def live_test():
             md={'description': 'injection device init'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
 
     sample_id1 = uuid.uuid4()
+    task_id1 = uuid.uuid4()
     task = tsk.Task(
         sample_id=sample_id1,
+        id=task_id1,
         task_type=tsk.TaskType('prepare'),
         tasks=[tsk.TaskData(
             device='injection1',
@@ -40,7 +43,7 @@ def live_test():
             md={'description': 'dummy prepare sleep'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
 
     sample_id2 = uuid.uuid4()
     task = tsk.Task(
@@ -52,7 +55,7 @@ def live_test():
             md={'description': 'dummy prepare sleep'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id1,
@@ -63,7 +66,7 @@ def live_test():
             md={'description': 'dummy sleep'}
         )]
     )
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id2,
@@ -74,11 +77,10 @@ def live_test():
             md={'description': 'dummy sleep'}
         )]
     )
-    
-    autocontrol.start.submit_task(task, port)
+    autocontrol.support.submit_task(task, port)
 
     # ------------------ Stopping Flask Server ----------------------------------
-    autocontrol.start.stop(portnumber=port)
+    autocontrol.support.stop(portnumber=port)
     print('Integration test done.')
     print('Program exit.')
 
@@ -88,4 +90,4 @@ def live_test():
 
 if __name__ == '__main__':
     live_test()
-    autocontrol.start.terminate_processes()
+    autocontrol.support.terminate_processes()

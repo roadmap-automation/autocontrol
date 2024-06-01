@@ -99,14 +99,12 @@ class autocontrol:
                 status = device.get_device_status()
                 if status != Status.IDLE:
                     # device is not ready to accept new commands and therefore, the current one is not finished
-                    print('Checked device {} for task completion. Device not yet idle.'.format(subtask.device))
                     return False
             else:
                 # get channel-dependent status
                 channel_status = device.get_channel_status(subtask.channel)
                 if channel_status != Status.IDLE:
                     # task not done
-                    print('Checked device {}, channel {} for task completion. Channel not yet idle'.format(subtask.device, subtask.channel))
                     return False
         # passed all tests, task has been finished
         return True
@@ -376,14 +374,16 @@ class autocontrol:
         if task.task_type != TaskType.INIT:
             device = self.get_device_object(task.tasks[0].device)
             if device is None:
-                return False, task, 'Unknown device.'
+                task.md['submission_response'] = 'Unknown device.'
+                return False, task
 
             # Devices must be up or idle to submit any tasks
             for subtask in task.tasks:
                 device = self.get_device_object(subtask.device)
                 device_status = device.get_device_status()
                 if not (device_status == Status.UP or device_status == Status.IDLE):
-                    return False, task, 'Device is down or busy.'
+                    task.md['submission_response'] = 'Failure. Device status is .' + device_status.name
+                    return False, task
 
         task_handlers = {
             TaskType.INIT: self.pre_process_init,
@@ -394,7 +394,8 @@ class autocontrol:
             TaskType.NOCHANNEL: None
         }
         if task.task_type not in task_handlers:
-            return False, task, 'Unknown task type.'
+            task.md['submission_response'] = 'Unknown task type.'
+            return False, task
 
         if task_handlers[task.task_type] is not None:
             # perform pre-processing and checks
@@ -402,7 +403,6 @@ class autocontrol:
         else:
             # currently no checks / pre-processing implemented
             execute_task = True
-            resp = 'Success.'
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
         # another layer of protection against cases in which are not caught by checks on the physical and operational
@@ -413,7 +413,7 @@ class autocontrol:
         # task.
         if execute_task and self.active_tasks.find_interference(task):
             execute_task = False
-            resp = 'Waiting for ongoing task at (target) device and (target) channel to finish.'
+            task.md['submission_response'] = 'Waiting for ongoing task at device or channel to finish.'
 
         elif execute_task:
             # Note: Every task execution including measurements only sends a signal to the device and do not wait for
@@ -428,7 +428,6 @@ class autocontrol:
                 device = self.get_device_object(subtask.device)
                 status, resp = device.execute_task(task=subtask, task_type=task.task_type)
                 subtask.md['submission_response'] = resp
-                print('Execute task response: ', resp)
                 if status != Status.SUCCESS:
                     task_success = False
 
@@ -437,12 +436,13 @@ class autocontrol:
             #   For this, we need to implement abort methods and need to pull tasks already started from the instrument.
 
             if task_success:
+                task.md['submission_response'] = 'Task successfully submitted.'
                 self.active_tasks.put(task)
             else:
                 execute_task = False
-                resp = 'Task failed at instrument.'
+                task.md['submission_response'] = 'Task failed at instrument. See task data.'
 
-        return execute_task, task, resp
+        return execute_task, task
 
     def post_process_task(self, task):
         """
@@ -467,7 +467,7 @@ class autocontrol:
                 # exception and not for waiting for the measurement to finish. This is done with ocupational channel
                 # states above.
                 # TODO: Better exception handling for this critical case
-                print('Device {} not up or busy.', task.tasks[0].device)
+                print('Device {} not up or busy. Device status is {}.'.format(task.tasks[0].device, status.name))
                 time.sleep(10)
             read_status, data = device.read(channel=task.tasks[0].channel)
             # append data to task
@@ -549,9 +549,7 @@ class autocontrol:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1
             elif task.sample_number not in blocked_samples:
-                success, task, response = self.process_task(task)
-                task.md['submission_response'] = response
-                print('Task response: ', response)
+                success, task = self.process_task(task)
                 if success:
                     # remove task from queue
                     self.queue.remove(task_id=task.id)
@@ -560,6 +558,8 @@ class autocontrol:
                 else:
                     # this sample number is now blocked as processing of the job was not successful
                     blocked_samples.append(task.sample_number)
+                    # modify the task in the queue because a submission response whas added
+                    self.queue.replace(task, task_id=task.id)
 
         return response
 
