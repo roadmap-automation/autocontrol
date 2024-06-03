@@ -6,6 +6,7 @@ import uuid
 
 from autocontrol.task_container import TaskContainer
 from autocontrol.task_struct import TaskType
+from autocontrol.task_struct import Task
 from autocontrol.status import Status
 
 # device imports
@@ -204,7 +205,7 @@ class autocontrol:
 
         return free_channels, busy_channels
 
-    def pre_process_init(self, task):
+    def pre_process_init(self, task: Task):
         """
         Perform checks on init task and register device to device list.
         :param task:
@@ -232,7 +233,7 @@ class autocontrol:
 
         return True, task, 'Success.'
 
-    def pre_process_measure(self, task):
+    def pre_process_measure(self, task: Task):
         """
         Perform checks on a measurement task given the current status of the autocontrol environment.
         :param task: the task (task.Task)
@@ -274,7 +275,7 @@ class autocontrol:
 
         return True, task, "Success."
 
-    def pre_process_prepare(self, task):
+    def pre_process_prepare(self, task: Task):
         """
         Perform checks on a preparation task given the current status of the autocontrol environment. Find free
         channels if none are given.
@@ -299,7 +300,7 @@ class autocontrol:
         ret, subtask, response = self.find_free_channels(subtask, task.sample_number)
         return ret, task, response
 
-    def pre_process_transfer(self, task):
+    def pre_process_transfer(self, task: Task):
         """
         Perform checks on a transfer task given the current status of the autocontrol environment. Find free
         channels if none are given.
@@ -353,7 +354,7 @@ class autocontrol:
 
         return True, task, 'Success.'
 
-    def process_task(self, task):
+    def process_task(self, task: Task):
         """
         Processes one job task and returns status.
 
@@ -405,7 +406,7 @@ class autocontrol:
             execute_task = True
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
-        # another layer of protection against cases in which are not caught by checks on the physical and operational
+        # another layer of protection against cases which are not caught by checks on the physical and operational
         # channel occupancies. Those checks can fail if the same sample is already present in a channel from a previous
         # step, although it (a new volume with the same sample number) is currently being transferred, or for starting
         # a measurement on a device and channel while there is a measurement still going on. It is also important for
@@ -434,13 +435,14 @@ class autocontrol:
             # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
             #   in a transfer is returning a non-success status.
             #   For this, we need to implement abort methods and need to pull tasks already started from the instrument.
+            #   Another option is implementing a hold-and-confirm logic.
 
             if task_success:
                 task.md['submission_response'] = 'Task successfully submitted.'
                 self.active_tasks.put(task)
             else:
                 execute_task = False
-                task.md['submission_response'] = 'Task failed at instrument. See task data.'
+                task.md['submission_response'] = 'Task failed at instrument. See sub-task data.'
 
         return execute_task, task
 
