@@ -75,10 +75,8 @@ def stop(portnumber=5004, wait_for_queue_to_empty=True):
 def get_task_status(task_id, port):
     print('\n')
     print('Requesting status for task ID: ' + str(task_id) + '\n')
-    url = 'http://localhost:' + str(port) + '/get_task_status'
-    headers = {'Content-Type': 'application/json'}
-    data = {'task_id': str(task_id)}
-    response = requests.get(url, headers=headers, params=data)
+    url = 'http://localhost:' + str(port) + '/get_task_status/' + str(task_id)
+    response = requests.get(url)
     # print(response, response.text)
     return response
 
