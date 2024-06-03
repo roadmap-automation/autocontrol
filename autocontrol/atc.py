@@ -309,7 +309,8 @@ class autocontrol:
         """
         # A transfer task should have a source channel which is already occupied by the sample that is being
         # transferred.
-        # TODO: Implement chained transfers
+        # TODO: Checks on manual channels regarding physical occupation for devices other than the source are not
+        #    yet implemented. Force transfers are not yet implemented.
 
         for i, subtask in enumerate(task.tasks):
             if subtask.device not in self.channel_po:
