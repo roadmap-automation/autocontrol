@@ -6,6 +6,11 @@ import requests
 
 
 class open_QCMD(Device):
+    def __init__(self, name=None, address=None, simulated=False):
+        super().__init__(name, address, simulated)
+        # QCMD is a passive device
+        self.passive = True
+
     def init(self, subtask):
         if self.test:
             return super().init(subtask)

@@ -12,8 +12,13 @@ class Device(object):
         self.number_of_channels = 1
         self.channel_mode = None
 
-        # hard-coded test flag
+        # test flag
         self.test = simulated
+
+        # Passive devices cannot actively perform a transfer, as they are only pass-through.
+        # Consequently, they cannot be the first device in a transfer chain. Sample occupancy checks
+        # are disabled, because any material will be pushed through and out.
+        self.passive = False
 
     def communicate(self, command, data=None, method='POST'):
         """
