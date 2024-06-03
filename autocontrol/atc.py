@@ -251,28 +251,40 @@ class autocontrol:
         if subtask.device not in self.channel_po:
             return False, task, 'Device not intialized.'
 
+        # check for consistency between non-channel and channel measurements
+        if subtask.non_channel_storage is not None and subtask.channel is not None:
+            return False, task, 'Channel and non-channel storage simultaneously provided.'
+
         cpol = self.channel_po[subtask.device]
         sample_number = task.sample_number
 
-        if subtask.channel is None:
-            # Source channel is not defined. Locate the sample based on sample number. If there are multiple,
-            # measure the one with the highest priority
-            best_channel = None
-            for i, channel_task in enumerate(cpol):
-                if channel_task is not None and channel_task.sample_number == sample_number:
-                    if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
-                        best_channel = i
-            if best_channel is None:
-                return False, task, 'Did not find the sample to measure.'
-            subtask.channel = best_channel
-        else:
+        if subtask.channel is not None:
             # check if manual channel selection is valid
-            if not (0 <= subtask.channel < len(cpol)):
-                return False, task, 'Invalid channel.'
-            if cpol[subtask.channel] is None:
-                return False, task, 'No sample in measurement channel'
+            if not (0 <= subtask.channel < len(self.channel_po[subtask.device])):
+                return False, task, 'Invalid channel number.'
             if cpol[subtask.channel].sample_number != sample_number:
-                return False, task, 'Wrong sample in measurement channel.'
+                if cpol[subtask.channel] is None:
+                    # A measurement with a manual channel number can create a new sample
+                    cpol[subtask.channel] = task
+                    return True, task, 'Success. Created sample on measurement.'
+                else:
+                    return False, task, 'Wrong sample in measurement channel.'
+            return True, task, 'Success.'
+
+        if subtask.non_channel_storage is not None:
+            # no need to identify target channel
+            return True, task, 'Success. Non-channel measurement has no checks.'
+
+        # No channel or no-channel storage given. Locate the sample based on sample number. If there are multiple,
+        # measure the one with the highest priority
+        best_channel = None
+        for i, channel_task in enumerate(cpol):
+            if channel_task is not None and channel_task.sample_number == sample_number:
+                if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
+                    best_channel = i
+        if best_channel is None:
+            return False, task, 'Did not find the sample to measure.'
+        subtask.channel = best_channel
 
         return True, task, "Success."
 
