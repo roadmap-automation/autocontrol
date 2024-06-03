@@ -13,7 +13,7 @@ class lh_device(Device):
         Communicates with the device to determine its status.
         :return: status of the request, status dictionary from the device if successful
         """
-        status, ret = self.communicate('/LH/GetStatus', method='GET')
+        status, ret = self.communicate('/autocontrol/GetStatus', method='GET')
         if status == Status.SUCCESS:
             try:
                 retdict = json.loads(ret)
