@@ -405,6 +405,7 @@ class autocontrol:
         else:
             # currently no checks / pre-processing implemented
             execute_task = True
+            resp = 'Success. No check performed.'
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
         # another layer of protection against cases which are not caught by checks on the physical and operational
@@ -444,6 +445,8 @@ class autocontrol:
             else:
                 execute_task = False
                 task.md['submission_response'] = 'Task failed at instrument. See sub-task data.'
+        else:
+            task.md['submission_response'] = resp
 
         return execute_task, task
 
