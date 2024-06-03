@@ -120,8 +120,8 @@ class autocontrol:
 
         device = self.get_device_object(subtask.device)
         channel_mode = device.channel_mode
+        # get free chennels by inspecting active tasks and channel occupation data (the latter not for passive devices)
         free_channels, _ = self.get_channel_occupancy(subtask.device)
-        # TODO: Add force implementation
 
         if not free_channels:
             return False, subtask, 'No free channels available.'
@@ -130,7 +130,7 @@ class autocontrol:
             subtask.channel = free_channels[0]
             return True, subtask, "Success."
 
-        # Find previous channel and target channel for this sample and device, the same channels will be reused
+        # Find previous channel and target channel for this sample and device for reuse
         hist_channel = self.sample_history.find_channels(sample_number, subtask.device)
         act_channel = self.active_tasks.find_channels(sample_number, subtask.device)
         hist_channel = list(set(hist_channel + act_channel))
@@ -169,9 +169,10 @@ class autocontrol:
         :param devicename: (str) name of the device for which the channels are analyzed
         :return: (list, list): list of channel numbers that are either free or busy
         """
+        device = self.get_device_object(devicename)
         free_channels, busy_channels, = self.get_channel_information_from_active_tasks(devicename)
-        # Combine this information with the channel physical occupation data
-        if devicename in self.channel_po:
+        # Combine this information with the channel physical occupation data. Ignore for passive devices
+        if (not device.passive) and (devicename in self.channel_po):
             cpo_list = self.channel_po[devicename]
             free_channels_po = [i for i in range(len(cpo_list)) if cpo_list[i] is None]
             busy_channels_po = [i for i in range(len(cpo_list)) if cpo_list[i] is not None]
@@ -307,33 +308,53 @@ class autocontrol:
         :param task: the task (task.Task)
         :return: success flag, the task, response (bool, task.Task, str)
         """
+
+        def reterror(flag, subtask, i, task, resp):
+            subtask.md['submission_response'] = 'Device not intialized.'
+            resp += ' Subtask: {}.'.format(i+1)
+            return flag, task, resp
+
         # A transfer task should have a source channel which is already occupied by the sample that is being
         # transferred.
-        # TODO: Checks on manual channels regarding physical occupation for devices other than the source are not
-        #    yet implemented. Force transfers are not yet implemented.
 
         for i, subtask in enumerate(task.tasks):
             if subtask.device not in self.channel_po:
-                return False, task, 'Device not intialized.'
+                return reterror(False, subtask, i, task, 'Device not intialized.')
 
             # check for consistency between non-channel and channel transfers:
             if subtask.non_channel_storage is not None and subtask.channel is not None:
-                return False, task, 'Channel and non-channel storage simultaneously provided.'
+                return reterror(False, subtask, i, task,
+                                'Channel and non-channel storage simultaneously provided.')
 
+            # check if source device is passive
+            device_obj = self.get_device_object(subtask.device)
+            if i == 0:
+                if device_obj.passive:
+                    return reterror(False, subtask, i, task, 'Passive device cannot initiate transfer.')
+
+            # check on channel occupancies
             cpol = self.channel_po[subtask.device]
             sample_number = task.sample_number
 
             if subtask.channel is not None:
                 # check if manual channel selection is valid
                 if not (0 <= subtask.channel < len(self.channel_po[subtask.device])):
-                    return False, task, 'Invalid channel.'
-                if i == 0 and cpol[subtask.channel]['sample_number'] != sample_number:
-                    return False, task, 'Wrong sample in source channel.'
+                    return reterror(False, subtask, i, task, 'Invalid channel number.')
+                if i == 0 and cpol[subtask.channel].sample_number != sample_number:
+                    if cpol[subtask.channel] is None:
+                        # A transfer with a manual channel number can create a new sample
+                        cpol[subtask.channel] = task
+                        return True, task, 'Success. Created sample on transfer.'
+                    else:
+                        return reterror(False, subtask, i, task, 'Wrong sample in source channel.')
+                if not device_obj.passive:
+                    if cpol[subtask.channel].sample_number is not None:
+                        return reterror(False, subtask, i, task, 'Device channel not empty.')
                 return True, task, 'Success.'
 
             if subtask.non_channel_storage is not None:
                 # no need to identify target channel
-                return True, task, 'Success.'
+                return True, task, 'Success. Non-channel transfer has no checks.'
 
             # No channel or non-channel storage given. Find a channel.
             if i == 0:
@@ -345,7 +366,7 @@ class autocontrol:
                         if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
                             best_channel = j
                 if best_channel is None:
-                    return False, task, 'Did not find the sample to transfer.'
+                    return False, task, 'Channel auto-select did not find the sample to transfer.'
                 subtask.channel = best_channel
             else:
                 # one of the target devices
@@ -488,12 +509,18 @@ class autocontrol:
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
 
         elif task.task_type == TaskType.TRANSFER:
-            # append task id associated with transfer source to current transfer task
-            task.task_history.append(self.channel_po[task.tasks[0].device][task.tasks[0].channel].id)
-            # remove existing task from the source channel physical occupancy
-            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = None
-            # attach current task to the target channel physical occupancy
-            self.channel_po[task.tasks[-1].device][task.tasks[-1].channel] = task
+            # transfers from channel source (as opposed to non-channel sources)
+            if task.tasks[0].channel is not None:
+                # append task id associated with transfer source to current transfer task
+                if self.channel_po[task.tasks[0].device][task.tasks[0].channel] is not None:
+                    task.task_history.append(self.channel_po[task.tasks[0].device][task.tasks[0].channel].id)
+                    # remove existing task from the source channel physical occupancy
+                    self.channel_po[task.tasks[0].device][task.tasks[0].channel] = None
+
+            # transfers to channel targets
+            if task.tasks[-1].channel is not None:
+                # attach current task to the target channel physical occupancy
+                self.channel_po[task.tasks[-1].device][task.tasks[-1].channel] = task
 
         # move task to history and save new channel physical occupancy
         self.active_tasks.remove(task)
@@ -576,6 +603,8 @@ class autocontrol:
         :param task: (task.Task) The task.
         :return: (Bool, str) success flag, descriptionn
         """
+
+        # TODO: Sample ID to number needs to be recreated after crash
 
         # Check sample number and id.
         if task.sample_number is None and task.sample_id is None:
