@@ -38,16 +38,7 @@ class lh_device(Device):
         self.number_of_channels = subtask.number_of_channels if subtask.number_of_channels is not None else 2
 
         return Status.SUCCESS, 'lh device initialized.'
-    
-    def standard_task(self, subtask):
-        if self.test:
-            return self.standard_test_response(subtask)
 
-        status = self.get_device_status()
-        if status != Status.IDLE:
-            return Status.ERROR, 'Device is not idle.'
-
-        status, ret = self.communicate('/LH/SubmitJob', subtask.json())
-
-        return status, ret
+    def standard_task(self, subtask, endpoint='/LH/SubmitJob'):
+        return super().standard_task(subtask, endpoint)
 

@@ -169,11 +169,17 @@ class Device(object):
         ddict = {}
         return Status.SUCCESS, ddict
 
-    def standard_task(self, subtask):
+    def standard_task(self, subtask, endpoint='/SubmitTask'):
         if self.test:
             return self.standard_test_response(subtask)
 
-        return Status.INVALID, 'Method not implemented.'
+        status = self.get_device_status()
+        if status != Status.IDLE:
+            return Status.ERROR, 'Device is not idle.'
+
+        status, ret = self.communicate(endpoint, subtask.json())
+
+        return status, ret
 
     def standard_test_response(self, subtask):
         if self.test:
