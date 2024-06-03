@@ -40,15 +40,6 @@ class injection_device(Device):
 
         return Status.SUCCESS, 'Injection device initialized.'
 
-    def standard_task(self, subtask):
-        if self.test:
-            return self.standard_test_response(subtask)
-
-        status = self.get_device_status()
-        if status != Status.IDLE:
-            return Status.ERROR, 'Device is not idle.'
-
-        status, ret = self.communicate('/SubmitTask', subtask.json())
-
-        return status, ret
+    def standard_task(self, subtask, endpoint='/SubmitTask'):
+        return super().standard_task(subtask, endpoint)
 

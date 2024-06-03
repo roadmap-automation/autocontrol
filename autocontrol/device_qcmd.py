@@ -62,6 +62,9 @@ class open_QCMD(Device):
 
         return super().read(channel)
 
+    def standard_task(self, subtask, endpoint='/SubmitTask'):
+        return super().standard_task(subtask, endpoint)
+
     def transfer(self, subtask):
         if self.test:
             super().transfer(subtask)
