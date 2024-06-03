@@ -65,16 +65,15 @@ def shutdown_server(wait_for_queue_to_empty=False):
     return 'Server shut down.'
 
 
-@app.route('/get_task_status', methods=['GET'])
-def get_task_status():
+@app.route('/get_task_status/<task_id>', methods=['GET'])
+def get_task_status(task_id):
     """
-    Identifies the status of a task in the queue. Expects a json-like dict with the key 'task_id' with the request.
+    Identifies the status of a task with id <task_id> in the queue.
     :return: dictionary {'queue': 'scheduled', 'active', 'history',
                          'submission response': (str)
                          'subtasks submission response': [str]
                          }
     """
-    task_id = request.args.get('task_id', None)
 
     if task_id is None:
         abort(400, description='No task id provided.')
