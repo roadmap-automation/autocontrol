@@ -7,6 +7,7 @@ import math
 import graphviz
 import json
 import os
+import requests
 import time
 import uuid
 import pandas as pd
@@ -17,6 +18,25 @@ st.set_page_config(layout="wide")
 
 if 'file_mod_date' not in st.session_state:
     st.session_state['file_mod_date'] = None
+
+if 'pause_button' not in st.session_state:
+    st.session_state.pause_button = False
+
+
+def click_pause_button():
+    # communicate with atc server and change state accordingly
+    if not st.session_state.pause_button:
+        url = st.session_state.atc_address + '/pause'
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers)
+    else:
+        url = st.session_state.atc_address + '/resume'
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers)
+
+    if response.status_code == 200:
+        st.session_state.pause_button = not st.session_state.pause_button
+
 
 @st.cache_data
 def analyze_df_for_device_pairs(df):
@@ -183,7 +203,8 @@ def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifi
 # --------------------------------------------- Streamlit Page Start --------------------------------------------------
 
 
-def main(storage_path=None):
+def main(storage_path=None, atc_address=None):
+    st.session_state.atc_address = atc_address
     identifier_list = []
     if storage_path is None:
         cfd = os.path.dirname(os.path.abspath(__file__))
@@ -227,28 +248,33 @@ def main(storage_path=None):
 
     st.title('Autocontrol Viewer')
 
-    # create flow chart via graphviz
-    st.text('Task Diagram')
-    st.image(os.path.join(storage_path, 'priority_queue.png'))
-    st.image(os.path.join(storage_path, 'active_queue.png'))
-    st.image(os.path.join(storage_path, 'history_queue.png'))
+    if st.session_state.pause_button:
+        st.button(':orange-background[Resume Queue]', on_click=click_pause_button)
+    else:
+        st.button(':green-background[Pause Queue]', on_click=click_pause_button)
 
-    st.text('Sample Occupancy Diagram')
-    st.image(os.path.join(storage_path, 'cpo_data.png'))
+    # create flow chart via graphviz
+    with st.expander('Task Diagram', expanded=True):
+        st.image(os.path.join(storage_path, 'priority_queue.png'))
+        st.image(os.path.join(storage_path, 'active_queue.png'))
+        st.image(os.path.join(storage_path, 'history_queue.png'))
+
+    with st.expander('Sample Occupancy Diagram'):
+        st.image(os.path.join(storage_path, 'cpo_data.png'))
 
     # visualize dataframes in tables
     co_list = (
-        #"id",
+        # "id",
         "priority",
         "sample_number",
         "task_type",
         "device",
         "channel",
         "status",
-        #"target_device",
-        #"target_channel",
+        # "target_device",
+        # "target_channel",
         "task",
-        #"md"
+        # "md"
     )
     co_conf = {"sample_number": "sample",
                                 "task_type": "task type",
@@ -256,12 +282,17 @@ def main(storage_path=None):
                                 # "target_device": "target device",
                                 # "target_channel": "target channel"
                }
+
+
     st.text('Queued Jobs:')
-    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
+    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+                 hide_index=True)
     st.text('Active Jobs:')
-    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
+    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+                 hide_index=True)
     st.text('Finished Jobs:')
-    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True, hide_index=True)
+    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+                 hide_index=True)
 
     # if st.button('Reload', type="primary"):
     time.sleep(10)
@@ -273,7 +304,10 @@ if __name__ == '__main__':
     # sys.argv = sys.argv[:1] + sys.argv[2:]  # Streamlit adds extra args; this line removes them
     parser = argparse.ArgumentParser()
     parser.add_argument('--storage_dir', type=str, default=os.getcwd(), help='Path to storage directory')
+    parser.add_argument('--atc_address', type=str, default='http://localhost:5000',
+                        help='Address of atc server')
     args = parser.parse_args()
     storage_dir = args.storage_dir
+    atc_address = args.atc_address
 
-    main(storage_path=storage_dir)
+    main(storage_path=storage_dir, atc_address=atc_address)

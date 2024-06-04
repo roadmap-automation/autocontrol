@@ -11,9 +11,11 @@ import subprocess
 import time
 
 
-def start_streamlit_viewer(storage_path):
+def start_streamlit_viewer(storage_path, server_address, server_port):
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
-    result = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path])
+    server_addr = server_address + ':' + str(server_port)
+    result = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path, '--atc_address',
+                             server_addr],)
 
 
 def start(portnumber=5004, storage_path=None):
@@ -58,7 +60,8 @@ def start(portnumber=5004, storage_path=None):
 
     # ------------------ Starting Streamlit Monitor----------------------------------
     print("Starting Streamlit Viewer with storage path: {}".format(storage_path))
-    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path,))
+    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path, 'http://localhost',
+                                                                           portnumber))
     process.start()
 
 

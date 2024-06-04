@@ -23,46 +23,23 @@ def background_task():
     Flask server background task comprising an infinite loop executing one task of the Bluesky queue at a time.
     :return: No return value.
     """
+    global atc
+
     while not app_shutdown:
+        wait_time = 5
         # check on all active tasks and handle if they are finished
-        atc.update_active_tasks()
-        # Try to execute one item from the bluesky queue.
-        # If all resources are busy or the queue is empty, the method returns without doing anything.
-        # We do not need to keep track of this here and will just reattempt again until the server is stopped.
-        atc.queue_execute_one_item()
-        # sleep for some time before
-        time.sleep(5)
+        if atc.update_active_tasks():
+            # one task was succesfully collected, let's not wait that long until checking queue again
+            wait_time = 0.1
+        # Try to execute one item from the scheduling queue. If all resources are busy or the queue is empty,
+        # the method does nothing. We do not need to keep track of this here and will just reattempt again until
+        # the server is stopped.
+        if not atc.paused:
+            if atc.queue_execute_one_item():
+                # one task was succesfully submitted, let's not wait that long until checking queue again
+                wait_time = 0.1
 
-
-def shutdown_server(wait_for_queue_to_empty=False):
-    """
-    Helper function for gracefully shutting down the Flask server.
-
-    :param wait_for_queue_to_empty: Boolean, whether to wait for the Bluesky API to process all tasks in the queue.
-    :return: Status string.
-    """
-    global app_shutdown
-
-    # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
-
-    while wait_for_queue_to_empty:
-        if atc.queue.empty() and atc.active_tasks.empty():
-            break
-        time.sleep(10)
-
-    # stop background thread
-    app_shutdown = True
-    while bg_thread.is_alive():
-        time.sleep(10)
-
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        # raise RuntimeError('Not running with the Werkzeug Server')
-        print('Not running with the Werkzeug Server. Server will shut down with program exit.')
-    else:
-        func()
-
-    return 'Server shut down.'
+        time.sleep(wait_time)
 
 
 @app.route('/get_task_status/<task_id>', methods=['GET'])
@@ -173,6 +150,75 @@ def queue_put():
         abort(400, description=description)
 
     return description
+
+
+@app.route('/pause', methods=['POST'])
+def pause():
+    """
+    POST request function that pauses the scheduling queue.
+    :return: Status string
+    """
+    global atc
+
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    if atc is None:
+        abort(400, description="No autocontrol instance found.")
+
+    atc.paused = True
+
+    return 'Paused!'
+
+
+@app.route('/resume', methods=['POST'])
+def resume():
+    """
+    POST request function that pauses the scheduling queue.
+    :return: Status string
+    """
+    global atc
+
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    if atc is None:
+        abort(400, description="No autocontrol instance found.")
+
+    atc.paused = False
+
+    return 'Resumed!'
+
+
+def shutdown_server(wait_for_queue_to_empty=False):
+    """
+    Helper function for gracefully shutting down the Flask server.
+
+    :param wait_for_queue_to_empty: Boolean, whether to wait for the Bluesky API to process all tasks in the queue.
+    :return: Status string.
+    """
+    global app_shutdown
+
+    # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
+
+    while wait_for_queue_to_empty:
+        if atc.queue.empty() and atc.active_tasks.empty():
+            break
+        time.sleep(10)
+
+    # stop background thread
+    app_shutdown = True
+    while bg_thread.is_alive():
+        time.sleep(10)
+
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        # raise RuntimeError('Not running with the Werkzeug Server')
+        print('Not running with the Werkzeug Server. Server will shut down with program exit.')
+    else:
+        func()
+
+    return 'Server shut down.'
 
 
 def start_server(host='0.0.0.0', port=5003, storage_path=None):
