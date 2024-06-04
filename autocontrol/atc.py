@@ -477,7 +477,8 @@ class autocontrol:
             # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
             #   in a transfer is returning a non-success status.
             #   For this, we need to implement abort methods and need to pull tasks already started from the instrument.
-            #   Another option is implementing a hold-and-confirm logic.
+            #   Another option is implementing a hold-and-confirm logic. Or the subtasks need to self-abort after
+            #   a while.
 
             if task_success:
                 task.md['submission_response'] = 'Task successfully submitted.'
