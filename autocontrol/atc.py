@@ -87,6 +87,9 @@ class autocontrol:
         self.channel_po = {}
         self.store_channel_po()
 
+        # run control
+        self.paused = False
+
     def check_task(self, task):
         """
         Checks if a particular task has been completed and is ready for collection.
@@ -176,7 +179,7 @@ class autocontrol:
             cpo_list = self.channel_po[devicename]
             free_channels_po = [i for i in range(len(cpo_list)) if cpo_list[i] is None]
             busy_channels_po = [i for i in range(len(cpo_list)) if cpo_list[i] is not None]
-            free_channels = list(set(free_channels + free_channels_po))
+            free_channels = list(set(free_channels).intersection(set(free_channels_po)))
             busy_channels = list(set(busy_channels + busy_channels_po))
         return free_channels, busy_channels
 
@@ -581,8 +584,8 @@ class autocontrol:
         # implementation is to give the 'init' task a higher priority than the rest.
         task_priority = [[TaskType.INIT], [TaskType.PREPARE, TaskType.TRANSFER, TaskType.MEASURE, TaskType.NOCHANNEL],
                          [TaskType.SHUTDOWN]]
-        response = ''
         blocked_samples = []
+        success = False
 
         i = 0
         while i < len(task_priority):
@@ -606,7 +609,7 @@ class autocontrol:
                     # modify the task in the queue because a submission response whas added
                     self.queue.replace(task, task_id=task.id)
 
-        return response
+        return success
 
     def queue_put(self, task):
         """
@@ -673,10 +676,14 @@ class autocontrol:
 
         Goes through the entire list of active tasks and checks if they are completed. Follows up with clean-up and
         post-processing steps.
-        :return: no return value
+        :return: (Bool) flag whether a task was completed
         """
+        collected = False
         task_list = self.active_tasks.get_all()
         for task in task_list:
             if self.check_task(task):
                 # task is ready for collection
                 self.post_process_task(task)
+                collected = True
+
+        return collected
