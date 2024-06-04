@@ -105,13 +105,13 @@ class autocontrol:
             if subtask.channel is None:
                 # channel-less task such as init
                 status = device.get_device_status()
-                if status != Status.IDLE:
+                if status != Status.IDLE and status != Status.UP:
                     # device is not ready to accept new commands and therefore, the current one is not finished
                     return False
             else:
                 # get channel-dependent status
                 channel_status = device.get_channel_status(subtask.channel)
-                if channel_status != Status.IDLE:
+                if channel_status != Status.IDLE and channel_status != Status.UP:
                     # task not done
                     return False
         # passed all tests, task has been finished
@@ -496,6 +496,7 @@ class autocontrol:
         :param task: The task (task.Task)
         :return: no return value
         """
+        success = True
         device = self.get_device_object(task.tasks[0].device)
 
         if task.task_type == TaskType.INIT:
@@ -505,17 +506,19 @@ class autocontrol:
 
         elif task.task_type == TaskType.MEASURE:
             # get measurment data
-            while True:
-                status = device.get_device_status()
-                if status == Status.IDLE or status == Status.UP:
-                    break
-                # Wait for device to become available to retrieve data. This is for catching an instrument
-                # exception and not for waiting for the measurement to finish. This is done with ocupational channel
-                # states above.
-                # TODO: Better exception handling for this critical case
-                print('Device {} not up or busy. Device status is {}.'.format(task.tasks[0].device, status.name))
-                time.sleep(10)
+
+            status = device.get_device_status()
+            if status != Status.IDLE and status != Status.UP:
+                task.md['execution_response'] = 'Device busy or down. Cannot read out data.'
+                self.active_tasks.replace(task, task.id)
+                return False
+
             read_status, data = device.read(channel=task.tasks[0].channel)
+            if read_status != Status.SUCCESS:
+                task.md['execution_response'] = 'Failure reading measurement data.'
+                self.active_tasks.replace(task, task.id)
+                return False
+
             # append data to task
             task.tasks[0].md['measurement_data'] = data
             # append task id associated with measurement material to current measurement task
@@ -542,9 +545,12 @@ class autocontrol:
                 self.channel_po[task.tasks[-1].device][task.tasks[-1].channel] = task
 
         # move task to history and save new channel physical occupancy
+        task.md['execution_response'] = 'Success.'
         self.active_tasks.remove(task)
         self.sample_history.put(task)
         self.store_channel_po()
+
+        return success
 
     def queue_inspect(self):
         """
@@ -685,7 +691,7 @@ class autocontrol:
         for task in task_list:
             if self.check_task(task):
                 # task is ready for collection
-                self.post_process_task(task)
-                collected = True
+                if self.post_process_task(task):
+                    collected = True
 
         return collected

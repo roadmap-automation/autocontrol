@@ -2,16 +2,16 @@ from autocontrol import task_struct
 
 import argparse
 import datetime
-import math
-
 import graphviz
 import json
+import math
 import os
+import pandas as pd
 import requests
+import sqlite3
+import streamlit as st
 import time
 import uuid
-import pandas as pd
-import streamlit as st
 
 st.set_page_config(layout="wide")
 
@@ -90,7 +90,8 @@ def load_sql(filename, storage_path):
     conn = st.connection(filename, type='sql', url=url)
     try:
         df = conn.query('select * from task_table', ttl=5)
-    except Exception:
+    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+        st.info(f"Database error: {e}")
         df = pd.DataFrame()
     return df
 
@@ -98,7 +99,6 @@ def load_sql(filename, storage_path):
 def load_json_task_list(filename, storage_path):
     with open(os.path.join(storage_path, filename+'.json'), "r") as f:
         data = json.load(f)
-    ret = {}
     for key in data:
         for channel, entry in enumerate(data[key]):
             # we do not convert back to a full Task object, just to a dictionary sufficient for visualization
@@ -209,44 +209,44 @@ def main(storage_path=None, atc_address=None):
         cfd = os.path.dirname(os.path.abspath(__file__))
         storage_path = os.path.join(cfd, '..', 'test')
 
-    file_mod_date = file_mod_time(storage_path)
-    if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
-        priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time(storage_path),
-                                                                                  storage_path=storage_path)
-        channel_po_data = []
-        for key in channel_po:
-            for channel, entry in enumerate(channel_po[key]):
-                if entry is not None:
-                    channel_po_data.append(entry)
-                    # st.info(entry)
-                    entry['channel'] = channel
-                    entry['device'] = key
-        if channel_po_data:
-            channel_po_data = pd.DataFrame(channel_po_data)
-        else:
-            channel_po_data = pd.DataFrame(columns=priority_queue.columns)
+    priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time(storage_path),
+                                                                              storage_path=storage_path)
+    channel_po_data = []
+    for key in channel_po:
+        for channel, entry in enumerate(channel_po[key]):
+            if entry is not None:
+                channel_po_data.append(entry)
+                # st.info(entry)
+                entry['channel'] = channel
+                entry['device'] = key
+    if channel_po_data:
+        channel_po_data = pd.DataFrame(channel_po_data)
+    else:
+        channel_po_data = pd.DataFrame(columns=priority_queue.columns)
 
-        render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
-                          file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
-                          storage_path=storage_path)
+    render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
+                      file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
+                      storage_path=storage_path)
 
-        # add a status column to each data frame for visualization
-        priority_queue['status'] = ''
-        active_queue['status'] = ''
-        history_queue['status'] = ''
+    # add a status column to each data frame for visualization
+    priority_queue['status'] = ''
+    active_queue['status'] = ''
+    history_queue['status'] = ''
 
-        if not priority_queue.empty:
-            priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row,
-                                                                                        key_str='submission_response'),
-                                                            axis=1)
-        if not active_queue.empty:
-            active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
+    if not priority_queue.empty:
+        priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
                                                         axis=1)
+    if not active_queue.empty:
+        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
+                                                    axis=1)
+    if not history_queue.empty:
+        history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
+                                                      axis=1)
 
-        # replace priority values by integers
-        priority_queue = replace_priority_with_int(priority_queue)
-        active_queue = replace_priority_with_int(active_queue)
-        history_queue = replace_priority_with_int(history_queue)
+    # replace priority values by integers
+    priority_queue = replace_priority_with_int(priority_queue)
+    active_queue = replace_priority_with_int(active_queue)
+    history_queue = replace_priority_with_int(history_queue)
 
     st.title('Autocontrol Viewer')
 
@@ -265,38 +265,36 @@ def main(storage_path=None, atc_address=None):
         st.image(os.path.join(storage_path, 'cpo_data.png'))
 
     # visualize dataframes in tables
-    co_list = (
-        # "id",
-        "priority",
-        "sample_number",
-        "task_type",
-        "device",
-        "channel",
-        "status",
-        # "target_device",
-        # "target_channel",
-        "task",
-        # "md"
-    )
-    co_conf = {"sample_number": "sample",
-                                "task_type": "task type",
-                                # "md": "meta data",
-                                # "target_device": "target device",
-                                # "target_channel": "target channel"
-               }
+    co_list = ("priority", "sample_number", "task_type", "device", "channel", "status", "task")
+    co_conf = {
+        "priority": st.column_config.NumberColumn("priority", width='small'),
+        "sample_number": st.column_config.NumberColumn("sample", width='small'),
+        "task_type": st.column_config.TextColumn("task type", width='small'),
+        "device": st.column_config.TextColumn("device", width='small'),
+        "channel": st.column_config.NumberColumn("channel", width='small'),
+        "task": st.column_config.Column("task", width='large'),
+    }
+    co_conf_priority = co_conf | {"status": st.column_config.TextColumn("submission status", width='small')}
+    co_conf_activity = co_conf | {"status": st.column_config.TextColumn("execution status", width='small')}
+    co_conf_history = co_conf | {"status": None}
 
     st.text('Queued Jobs:')
-    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority, use_container_width=True,
                  hide_index=True)
     st.text('Active Jobs:')
-    st.dataframe(active_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+    st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, use_container_width=True,
                  hide_index=True)
     st.text('Finished Jobs:')
-    st.dataframe(history_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
+    st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, use_container_width=True,
                  hide_index=True)
 
-    # if st.button('Reload', type="primary"):
-    time.sleep(10)
+    while True:
+        file_mod_date = file_mod_time(storage_path)
+        if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
+            st.session_state['file_mod_date'] = file_mod_date
+            break
+        time.sleep(5)
+
     # st.cache_data.clear()
     st.rerun()
 
