@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import threading
 
@@ -157,6 +156,7 @@ class TaskContainer:
         priority item with the given task type. If there is no match or the container is empty, returns None.
         :param task_type: (str or list) task type or list of task types
         :param remove: (bool) flag whether to remove the highest priority item from the queue
+        :param blocked_samples: (list) list of blocked sample numbers that are not to be retrieved
         :return: item or None
         """
 
@@ -182,12 +182,15 @@ class TaskContainer:
             bss = [str(i) for i in blocked_samples]
             blocked_samples_str = "','".join(bss)
             if task_type is None:
-                query = f"SELECT task FROM task_table WHERE sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+                query = (f"SELECT task FROM task_table WHERE sample_number NOT IN ('{blocked_samples_str}') "
+                         f"ORDER BY priority DESC LIMIT 1")
             elif isinstance(task_type, str):
-                query = f"SELECT task FROM task_table WHERE task_type='{task_type}' AND sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+                query = (f"SELECT task FROM task_table WHERE task_type='{task_type}' AND sample_number NOT IN "
+                         f"('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1")
             elif isinstance(task_type, list):
                 task_type_str = "','".join(task_type)
-                query = f"SELECT task FROM task_table WHERE task_type IN ('{task_type_str}') AND sample_number NOT IN ('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1"
+                query = (f"SELECT task FROM task_table WHERE task_type IN ('{task_type_str}') AND sample_number NOT IN "
+                         f"('{blocked_samples_str}') ORDER BY priority DESC LIMIT 1")
             else:
                 cursor.close()
                 conn.close()
@@ -272,7 +275,7 @@ class TaskContainer:
 
     def remove(self, task=None, task_id=None):
         """
-        Removes a task from the SQLite database using the unique 'priority' field of the task
+        Removes a task from the SQLite database using the unique 'priority' field.
         :param task: The task to remove
         :param task_id: (uuid) ID of the task to remove
         :return: no return value
@@ -300,8 +303,8 @@ class TaskContainer:
     def replace(self, task, task_id=None):
         """
         Replaces a task in the SQLite database using the unique 'task_id' field of the task
-        :param task: replacement task
-        :param task_id: task id
+        :param task: the replacement
+        :param task_id: ID
         :return: no return value
         """
         if task_id is None:
@@ -309,4 +312,3 @@ class TaskContainer:
         self.remove(task_id=task_id)
         self.put(task=task)
         return
-

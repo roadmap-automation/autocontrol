@@ -1,5 +1,5 @@
-from pydantic import BaseModel, field_validator, Field, field_serializer
-from typing import Type, Optional, List
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from enum import Enum
 import uuid
 
@@ -22,7 +22,7 @@ class TaskData(BaseModel):
     is stored per sub-task and will be later aggregated.
     """
     # Note: I decided against an earlier implementation to subclass TaskData because I found it difficult to come
-    # up with easy and legible implementations of such subclasses in autocontrol. That might be revisited in future.
+    # up with easy and legible implementations of such subclasses in autocontrol. That might be revisited in the future.
 
     # general fields
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -63,4 +63,3 @@ class Task(BaseModel):
     tasks: List[TaskData] = Field(default_factory=list)
     task_history: List[uuid.UUID] = Field(default_factory=list)
     task_type: TaskType
-

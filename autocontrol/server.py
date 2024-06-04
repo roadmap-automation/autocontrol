@@ -221,9 +221,9 @@ def shutdown_server(wait_for_queue_to_empty=False):
     return 'Server shut down.'
 
 
-def start_server(host='0.0.0.0', port=5003, storage_path=None):
+def start_server(hostname='localhost', port=5003, storage_path=None):
     def app_start():
-        run_simple('localhost', port, app)
+        run_simple(hostname, port, app)
 
     if storage_path is None:
         storage_path = os.getcwd()

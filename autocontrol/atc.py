@@ -74,6 +74,10 @@ class autocontrol:
 
         # directory of sample id (keys) and the associated sample numbers
         self.sample_id_to_number = {}
+        # recreate this dict from saved tasks
+        all_tasks = self.queue.get_all() + self.sample_history.get_all() + self.active_tasks.get_all()
+        for task in all_tasks:
+            self.sample_id_to_number[task.sample_id] = task.sample_number
 
         # device addresses
         # keys: device name
@@ -618,8 +622,6 @@ class autocontrol:
         :param task: (task.Task) The task.
         :return: (Bool, str) success flag, descriptionn
         """
-
-        # TODO: Sample ID to number needs to be recreated after crash
 
         # Check sample number and id.
         if task.sample_number is None and task.sample_id is None:
