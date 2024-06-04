@@ -14,8 +14,8 @@ import time
 def start_streamlit_viewer(storage_path, server_address, server_port):
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
     server_addr = server_address + ':' + str(server_port)
-    result = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path, '--atc_address',
-                             server_addr],)
+    _ = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path, '--atc_address',
+                        server_addr],)
 
 
 def start(portnumber=5004, storage_path=None):
@@ -53,7 +53,7 @@ def start(portnumber=5004, storage_path=None):
 
     # ------------------ Starting Flask Server----------------------------------
     print("Starting Flask Server")
-    server.start_server(host='localhost', port=portnumber, storage_path=storage_path)
+    server.start_server(hostname='localhost', port=portnumber, storage_path=storage_path)
 
     print('Waiting for 2 seconds.')
     time.sleep(5)

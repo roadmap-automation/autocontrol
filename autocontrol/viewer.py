@@ -12,7 +12,6 @@ import time
 import uuid
 import pandas as pd
 import streamlit as st
-import sys
 
 st.set_page_config(layout="wide")
 
@@ -237,9 +236,12 @@ def main(storage_path=None, atc_address=None):
         history_queue['status'] = ''
 
         if not priority_queue.empty:
-            priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row,key_str='submission_response'), axis=1)
+            priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row,
+                                                                                        key_str='submission_response'),
+                                                            axis=1)
         if not active_queue.empty:
-            active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'), axis=1)
+            active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
+                                                        axis=1)
 
         # replace priority values by integers
         priority_queue = replace_priority_with_int(priority_queue)
@@ -282,7 +284,6 @@ def main(storage_path=None, atc_address=None):
                                 # "target_device": "target device",
                                 # "target_channel": "target channel"
                }
-
 
     st.text('Queued Jobs:')
     st.dataframe(priority_queue, column_order=co_list, column_config=co_conf, use_container_width=True,
