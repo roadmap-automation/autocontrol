@@ -269,13 +269,12 @@ class autocontrol:
             # check if manual channel selection is valid
             if not (0 <= subtask.channel < len(self.channel_po[subtask.device])):
                 return False, task, 'Invalid channel number.'
+            if cpol[subtask.channel] is None:
+                # A measurement with a manual channel number can create a new sample
+                cpol[subtask.channel] = task
+                return True, task, 'Success. Created sample on measurement.'
             if cpol[subtask.channel].sample_number != sample_number:
-                if cpol[subtask.channel] is None:
-                    # A measurement with a manual channel number can create a new sample
-                    cpol[subtask.channel] = task
-                    return True, task, 'Success. Created sample on measurement.'
-                else:
-                    return False, task, 'Wrong sample in measurement channel.'
+                return False, task, 'Wrong sample in measurement channel.'
             return True, task, 'Success.'
 
         if subtask.non_channel_storage is not None:
