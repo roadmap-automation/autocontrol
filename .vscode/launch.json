@@ -1,0 +1,14 @@
+{
+    "version": "0.1",
+    "configurations": [
+
+        {
+            "name": "Python: Current File, Frank",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
+}
