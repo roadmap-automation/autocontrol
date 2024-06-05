@@ -65,13 +65,5 @@ class open_QCMD(Device):
     def standard_task(self, subtask, endpoint='/SubmitTask'):
         return super().standard_task(subtask, endpoint)
 
-    def transfer(self, subtask):
-        if self.test:
-            super().transfer(subtask)
-
-        # The QCMD is a passive device concering transfer. There is no effect of a transfer on any status variable.
-        return Status.SUCCESS, ''
-
-
 if __name__ == '__main__':
     open_QCMD1 = open_QCMD(name="Open QCMD", address="http://localhost:5011/QCMD/")

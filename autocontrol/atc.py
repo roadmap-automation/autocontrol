@@ -358,14 +358,14 @@ class autocontrol:
                 # check if manual channel selection is valid
                 if not (0 <= subtask.channel < len(self.channel_po[subtask.device])):
                     return reterror(False, subtask, i, task, 'Invalid channel number.')
-                if i == 0 and cpol[subtask.channel].sample_number != sample_number:
+                if i == 0:
                     if cpol[subtask.channel] is None:
                         # A transfer with a manual channel number can create a new sample
                         cpol[subtask.channel] = task
                         return True, task, 'Success. Created sample on transfer.'
-                    else:
+                    elif cpol[subtask.channel].sample_number != sample_number:
                         return reterror(False, subtask, i, task, 'Wrong sample in source channel.')
-                if not device_obj.passive:
+                elif not device_obj.passive:
                     if cpol[subtask.channel].sample_number is not None:
                         return reterror(False, subtask, i, task, 'Device channel not empty.')
                 return True, task, 'Success.'
