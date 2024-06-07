@@ -678,6 +678,28 @@ class autocontrol:
         self.queue.put(task)
         return True, 'Task succesfully enqueued.'
 
+    def reset(self):
+        """
+        This is an external API method. It wipes all tasks, channel po, and sample ID information
+        :return: no return value
+        """
+        self.queue.clear()
+        self.active_tasks.clear()
+        # never delete the sample history
+        # self.sample_history.clear()
+        self.channel_po = {}
+        self.store_channel_po()
+        self.sample_id_to_number = {}
+
+    def restart(self):
+        """
+        This is an external API method. It wipes all tasks, channel po, and sample ID information. It resets the
+        device inits.
+        :return:
+        """
+        self.reset()
+        self.devices = {}
+
     def update_active_tasks(self):
         """
         This is an external API method.
@@ -695,3 +717,4 @@ class autocontrol:
                     collected = True
 
         return collected
+
