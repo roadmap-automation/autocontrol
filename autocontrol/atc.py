@@ -687,7 +687,10 @@ class autocontrol:
         self.active_tasks.clear()
         # never delete the sample history
         # self.sample_history.clear()
-        self.channel_po = {}
+        # clear channel occupancies
+        for device in self.channel_po:
+            for channel in range(len(self.channel_po[device])):
+                self.channel_po[device][channel] = None
         self.store_channel_po()
         self.sample_id_to_number = {}
 

@@ -62,7 +62,6 @@ def click_reset_button():
 
 
 def click_restart_button():
-    time.sleep(1)
     if not st.session_state.restart_all:
         st.session_state.restart_all = True
     else:
@@ -82,7 +81,7 @@ def analyze_df_for_device_pairs(df):
     return result
 
 
-@st.experimental_fragment
+# @st.experimental_fragment
 def ui_fragment():
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -361,7 +360,6 @@ def main(storage_path=None, atc_address=None):
     if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
         st.session_state.poll_counter = count
         if st.session_state.restart_all or st.session_state.reset_all:
-            time.sleep(5)
             st.session_state.restart_all = False
             st.session_state.reset_all = False
 
