@@ -16,8 +16,6 @@ import uuid
 
 st.set_page_config(layout="wide")
 
-if 'file_mod_date' not in st.session_state:
-    st.session_state['file_mod_date'] = None
 if 'pause_button' not in st.session_state:
     st.session_state.pause_button = False
 if 'reset_all' not in st.session_state:
@@ -64,7 +62,6 @@ def click_reset_button():
 
 
 def click_restart_button():
-    time.sleep(1)
     if not st.session_state.restart_all:
         st.session_state.restart_all = True
     else:
@@ -83,7 +80,8 @@ def analyze_df_for_device_pairs(df):
     result = list(unique_pairs.to_records(index=False))
     return result
 
-@st.experimental_fragment
+
+# @st.experimental_fragment
 def ui_fragment():
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -103,6 +101,7 @@ def ui_fragment():
             st.button(':red-background[Are you sure? Restart?]', on_click=click_restart_button)
         else:
             st.button('Restart Autocontrol. Reset device inits.', on_click=click_restart_button)
+
 
 def get_new_data(storage_path, identifier_list):
     priority_queue, active_queue, history_queue, channel_po, edges = load_all(storage_path=storage_path)
@@ -316,7 +315,6 @@ def main(storage_path=None, atc_address=None):
     if st.session_state.file_mod_time is None or st.session_state.file_mod_time != fmt:
         st.session_state.file_mod_time = fmt
         get_new_data(storage_path=storage_path, identifier_list=identifier_list)
-        rerun_requested = True
 
     priority_queue = st.session_state.priority_queue
     active_queue = st.session_state.active_queue
@@ -362,7 +360,6 @@ def main(storage_path=None, atc_address=None):
     if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
         st.session_state.poll_counter = count
         if st.session_state.restart_all or st.session_state.reset_all:
-            time.sleep(5)
             st.session_state.restart_all = False
             st.session_state.reset_all = False
 
