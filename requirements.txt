@@ -4,6 +4,7 @@ flask
 werkzeug
 sqlalchemy
 streamlit
+streamlit-autorefresh
 pandas
 graphviz
 psutil

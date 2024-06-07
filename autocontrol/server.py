@@ -171,6 +171,30 @@ def pause():
     return 'Paused!'
 
 
+@app.route('/reset', methods=['POST'])
+def reset():
+    """
+    POST request function that wipes all tasks in all queues and the channel occupancy list.
+    :return: no return value
+    """
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+    atc.reset()
+    return 'Restarted.'
+
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    """
+    POST request function that wipes all tasks in all queues and the channel occupancy list.
+    :return: no return value
+    """
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+    atc.restart()
+    return 'Reset.'
+
+
 @app.route('/resume', methods=['POST'])
 def resume():
     """
@@ -262,3 +286,4 @@ def stop_server():
         print('Shutting down server after waiting for queue to empty.')
         response = shutdown_server(wait_for_queue_to_empty=data['wait_for_queue_to_empty'])
     return response
+

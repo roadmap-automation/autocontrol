@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 import sqlite3
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import time
 import uuid
 
@@ -17,12 +18,26 @@ st.set_page_config(layout="wide")
 
 if 'file_mod_date' not in st.session_state:
     st.session_state['file_mod_date'] = None
-
 if 'pause_button' not in st.session_state:
     st.session_state.pause_button = False
+if 'reset_all' not in st.session_state:
+    st.session_state.reset_all = False
+if 'restart_all' not in st.session_state:
+    st.session_state.restart_all = False
+if 'priority_queue' not in st.session_state:
+    st.session_state.priority_queue = None
+if 'active_queue' not in st.session_state:
+    st.session_state.active_queue = None
+if 'history_queue' not in st.session_state:
+    st.session_state.history_queue = None
+if 'file_mod_time' not in st.session_state:
+    st.session_state.file_mod_time = None
+if 'poll_counter' not in st.session_state:
+    st.session_state.poll_counter = None
 
 
 def click_pause_button():
+    time.sleep(1)
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
         url = st.session_state.atc_address + '/pause'
@@ -37,6 +52,29 @@ def click_pause_button():
         st.session_state.pause_button = not st.session_state.pause_button
 
 
+def click_reset_button():
+    if not st.session_state.reset_all:
+        st.session_state.reset_all = True
+    else:
+        url = st.session_state.atc_address + '/reset'
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers)
+        if response.status_code == 200:
+            st.session_state.reset_all = False
+
+
+def click_restart_button():
+    time.sleep(1)
+    if not st.session_state.restart_all:
+        st.session_state.restart_all = True
+    else:
+        url = st.session_state.atc_address + '/restart'
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers)
+        if response.status_code == 200:
+            st.session_state.restart_all = False
+
+
 @st.cache_data
 def analyze_df_for_device_pairs(df):
     filtered_df = df[df['task_type'] == 'transfer']
@@ -44,6 +82,70 @@ def analyze_df_for_device_pairs(df):
     unique_pairs = pairs_df.drop_duplicates()
     result = list(unique_pairs.to_records(index=False))
     return result
+
+@st.experimental_fragment
+def ui_fragment():
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.session_state.pause_button:
+            st.button(':orange-background[Resume Queue]', on_click=click_pause_button)
+        else:
+            st.button(':green-background[Pause Queue]', on_click=click_pause_button)
+
+    with col3:
+        if st.session_state.reset_all:
+            st.button(':red-background[Are you sure? Clear all tasks?]', on_click=click_reset_button)
+        else:
+            st.button('Clear All Tasks, keep device inits.', on_click=click_reset_button)
+
+    with col4:
+        if st.session_state.restart_all:
+            st.button(':red-background[Are you sure? Restart?]', on_click=click_restart_button)
+        else:
+            st.button('Restart Autocontrol. Reset device inits.', on_click=click_restart_button)
+
+def get_new_data(storage_path, identifier_list):
+    priority_queue, active_queue, history_queue, channel_po, edges = load_all(storage_path=storage_path)
+    channel_po_data = []
+    for key in channel_po:
+        for channel, entry in enumerate(channel_po[key]):
+            if entry is not None:
+                channel_po_data.append(entry)
+                # st.info(entry)
+                entry['channel'] = channel
+                entry['device'] = key
+    if channel_po_data:
+        channel_po_data = pd.DataFrame(channel_po_data)
+    else:
+        channel_po_data = pd.DataFrame(columns=priority_queue.columns)
+
+    render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
+                      file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
+                      storage_path=storage_path)
+
+    # add a status column to each data frame for visualization
+    priority_queue['status'] = ''
+    active_queue['status'] = ''
+    history_queue['status'] = ''
+
+    if not priority_queue.empty:
+        priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
+                                                        axis=1)
+    if not active_queue.empty:
+        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
+                                                    axis=1)
+    if not history_queue.empty:
+        history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
+                                                      axis=1)
+
+    # replace priority values by integers
+    priority_queue = replace_priority_with_int(priority_queue)
+    active_queue = replace_priority_with_int(active_queue)
+    history_queue = replace_priority_with_int(history_queue)
+
+    st.session_state.priority_queue = priority_queue
+    st.session_state.active_queue = active_queue
+    st.session_state.history_queue = history_queue
 
 
 def file_mod_time(storage_path):
@@ -59,8 +161,7 @@ def file_mod_time(storage_path):
     return time1, time2, time3
 
 
-@st.cache_data
-def load_all(modflag, storage_path):
+def load_all(storage_path):
     priority_queue = load_sql('priority_queue', storage_path)
     active_queue = load_sql('active_queue', storage_path)
     history_queue = load_sql('history_queue', storage_path)
@@ -89,7 +190,7 @@ def load_sql(filename, storage_path):
     url = localhost + absolute_path
     conn = st.connection(filename, type='sql', url=url)
     try:
-        df = conn.query('select * from task_table', ttl=5)
+        df = conn.query("SELECT * FROM task_table", ttl=5)
     except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         st.info(f"Database error: {e}")
         df = pd.DataFrame()
@@ -203,57 +304,27 @@ def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifi
 
 
 def main(storage_path=None, atc_address=None):
+    count = st_autorefresh(interval=5000, limit=None, key="pcounter")
+
     st.session_state.atc_address = atc_address
     identifier_list = []
     if storage_path is None:
         cfd = os.path.dirname(os.path.abspath(__file__))
         storage_path = os.path.join(cfd, '..', 'test')
 
-    priority_queue, active_queue, history_queue, channel_po, edges = load_all(file_mod_time(storage_path),
-                                                                              storage_path=storage_path)
-    channel_po_data = []
-    for key in channel_po:
-        for channel, entry in enumerate(channel_po[key]):
-            if entry is not None:
-                channel_po_data.append(entry)
-                # st.info(entry)
-                entry['channel'] = channel
-                entry['device'] = key
-    if channel_po_data:
-        channel_po_data = pd.DataFrame(channel_po_data)
-    else:
-        channel_po_data = pd.DataFrame(columns=priority_queue.columns)
+    fmt = file_mod_time(storage_path)
+    if st.session_state.file_mod_time is None or st.session_state.file_mod_time != fmt:
+        st.session_state.file_mod_time = fmt
+        get_new_data(storage_path=storage_path, identifier_list=identifier_list)
+        rerun_requested = True
 
-    render_all_queues(priority_queue, active_queue, history_queue, channel_po_data, edges,
-                      file_mod_time(storage_path), identifier_list=identifier_list, channel_po=channel_po,
-                      storage_path=storage_path)
-
-    # add a status column to each data frame for visualization
-    priority_queue['status'] = ''
-    active_queue['status'] = ''
-    history_queue['status'] = ''
-
-    if not priority_queue.empty:
-        priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
-                                                        axis=1)
-    if not active_queue.empty:
-        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
-                                                    axis=1)
-    if not history_queue.empty:
-        history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
-                                                      axis=1)
-
-    # replace priority values by integers
-    priority_queue = replace_priority_with_int(priority_queue)
-    active_queue = replace_priority_with_int(active_queue)
-    history_queue = replace_priority_with_int(history_queue)
+    priority_queue = st.session_state.priority_queue
+    active_queue = st.session_state.active_queue
+    history_queue = st.session_state.history_queue
 
     st.title('Autocontrol Viewer')
 
-    if st.session_state.pause_button:
-        st.button(':orange-background[Resume Queue]', on_click=click_pause_button)
-    else:
-        st.button(':green-background[Pause Queue]', on_click=click_pause_button)
+    ui_fragment()
 
     # create flow chart via graphviz
     with st.expander('Task Diagram', expanded=True):
@@ -288,15 +359,12 @@ def main(storage_path=None, atc_address=None):
     st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, use_container_width=True,
                  hide_index=True)
 
-    while True:
-        file_mod_date = file_mod_time(storage_path)
-        if st.session_state['file_mod_date'] is None or st.session_state['file_mod_date'] != file_mod_date:
-            st.session_state['file_mod_date'] = file_mod_date
-            break
-        time.sleep(5)
-
-    # st.cache_data.clear()
-    st.rerun()
+    if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
+        st.session_state.poll_counter = count
+        if st.session_state.restart_all or st.session_state.reset_all:
+            time.sleep(5)
+            st.session_state.restart_all = False
+            st.session_state.reset_all = False
 
 
 if __name__ == '__main__':

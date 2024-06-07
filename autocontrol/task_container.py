@@ -69,6 +69,22 @@ class TaskContainer:
         conn.close()
         self.lock.release()
 
+    def clear(self):
+        """
+        Clears the task container.
+        :return: no return value
+        """
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM task_table;")
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
     def find_channels(self, sample_number=None, device_name=None):
         """
         Find the used channels of all stored subtask given the device provided by the reference subtask. If enabled,
