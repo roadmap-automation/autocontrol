@@ -79,13 +79,15 @@ def live_test():
     )
     autocontrol.support.submit_task(task, port)
 
+    # Wait for user input
+    _ = input("Please enter some text and press Enter to stop all processes: ")
+
     # ------------------ Stopping Flask Server ----------------------------------
     autocontrol.support.stop(portnumber=port)
     print('Integration test done.')
     print('Program exit.')
 
-    # Wait for user input
-    _ = input("Please enter some text and press Enter to stop all processes: ")
+
 
 
 if __name__ == '__main__':

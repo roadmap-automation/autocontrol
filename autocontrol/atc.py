@@ -462,6 +462,7 @@ class autocontrol:
                 # task handlers below will do other tests, and the actual submission of the task to the device is
                 # another place where channels will be checked. An early elimination here will save communication
                 # overhead.
+                # TODO: Pass the channel status to the task handlers and apply it to manual and auto-select tasks.
                 if subtask.channel is not None:
                     status = channel_status[subtask.channel]
                     if status != Status.UP and status != Status.IDLE:

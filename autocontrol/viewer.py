@@ -35,7 +35,6 @@ if 'poll_counter' not in st.session_state:
 
 
 def click_pause_button():
-    time.sleep(1)
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
         url = st.session_state.atc_address + '/pause'
