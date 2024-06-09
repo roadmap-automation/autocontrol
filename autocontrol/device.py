@@ -116,11 +116,13 @@ class Device(object):
         if request_status != Status.SUCCESS:
             return request_status, None, None
 
+        channel_status_list = device_status['channel_status']
+
         device_status = autocontrol.status.get_status_member(device_status['status'])
         if device_status is None:
             device_status = Status.ERROR
 
-        channel_status_list = device_status['channel_status']
+        #channel_status_list = device_status['channel_status']
         for i, channel_status in enumerate(channel_status_list):
             channel_status_list[i] = autocontrol.status.get_status_member(channel_status)
             if channel_status_list[i] is None:
