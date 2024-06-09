@@ -114,6 +114,7 @@ class autocontrol:
         :param task: The task.
         :return: True if ready, False if not.
         """
+        task_completed = True
         for i, subtask in enumerate(task.tasks):
             if 'execution_response' in subtask.md and 'Success.' in subtask.md['execution_response']:
                 # subtask was previously flagged as successfuly completed
@@ -123,16 +124,18 @@ class autocontrol:
             if request_status != Status.SUCCESS:
                 response = 'Status request unsuccesful with response: {}'.format(request_status.name)
                 _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
-                task.md['execution_response'] = response
-                return False
+                task.md['execution_response'] = 'Waiting. Status request unsuccesful'
+                task_completed = False
+                continue
             if subtask.channel is None:
                 # channel-less task such as init
                 if device_status != Status.IDLE and device_status != Status.UP:
                     # device is not ready to accept new commands and therefore, the current one is not finished
                     response = 'Not finished. Device status: {}'.format(device_status.name)
                     _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
-                    task.md['execution_response'] = response
-                    return False
+                    task.md['execution_response'] = 'Waiting. Not finished.'
+                    task_completed = False
+                    continue
             else:
                 # get channel-dependent status
                 # Task is collected if channel is idle, even if device is still busy.
@@ -140,14 +143,18 @@ class autocontrol:
                 if channel_status != Status.IDLE and channel_status != Status.UP:
                     response = 'Not finished. Channel {} status: {}'.format(subtask.channel, device_status.name)
                     _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
-                    task.md['execution_response'] = response
-                    return False
+                    task.md['execution_response'] = 'Waiting. Not finished.'
+                    task_completed = False
+                    continue
             response = 'Success.'
             _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
 
-        # passed all tests, task has been finished
-        task.md['execution_response'] = 'Success.'
-        return True
+        if task_completed:
+            # passed all tests, task has been finished
+            task.md['execution_response'] = 'Success.'
+            return True
+        else:
+            return False
 
     def find_free_channels(self, subtask, sample_number):
         """
