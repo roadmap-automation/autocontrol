@@ -35,7 +35,6 @@ if 'poll_counter' not in st.session_state:
 
 
 def click_pause_button():
-    time.sleep(1)
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
         url = st.session_state.atc_address + '/pause'
@@ -128,14 +127,11 @@ def get_new_data(storage_path, identifier_list):
     history_queue['status'] = ''
 
     if not priority_queue.empty:
-        priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_str='submission_response'),
-                                                        axis=1)
+        priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_strs=('submission_response', 'submission_device_response')), axis=1)
     if not active_queue.empty:
-        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
-                                                    axis=1)
+        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_strs=('execution_response',)), axis=1)
     if not history_queue.empty:
-        history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_str='execution_response'),
-                                                      axis=1)
+        history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_strs=('execution_response',)), axis=1)
 
     # replace priority values by integers
     priority_queue = replace_priority_with_int(priority_queue)
@@ -212,15 +208,27 @@ def replace_priority_with_int(df):
     return df
 
 
-def retrieve_md_key(row, key_str='submission_respone'):
+def retrieve_md_key(row, key_strs=('submission_response',)):
     status = ''
+    taskmd = subtaskmd = False
     task = row['task']
     if task is not None:
         # there is ever only one item in this tuple
         task = task_struct.Task.parse_raw(task)
     if task.md is not None:
-        if key_str in task.md:
-            status = task.md[key_str]
+        for key_str in key_strs:
+            if key_str in task.md:
+                if not taskmd:
+                    status += 'Task status:\n'
+                    taskmd = True
+                status += key_str + ': ' + task.md[key_str] + '\n'
+    for i, subtask in enumerate(task.tasks):
+        for key_str in key_strs:
+            if key_str in subtask.md:
+                if not subtaskmd:
+                    status += 'Subtask {} status:\n'.format(i)
+                    subtaskmd = True
+                status += key_str + ': ' + subtask.md[key_str] + '\n'
     return status
 
 
@@ -325,13 +333,15 @@ def main(storage_path=None, atc_address=None):
     ui_fragment()
 
     # create flow chart via graphviz
-    with st.expander('Task Diagram', expanded=True):
-        st.image(os.path.join(storage_path, 'priority_queue.png'))
-        st.image(os.path.join(storage_path, 'active_queue.png'))
-        st.image(os.path.join(storage_path, 'history_queue.png'))
+    # with st.expander('Task Diagram', expanded=True):
+    st.write('Tasks')
+    st.image(os.path.join(storage_path, 'priority_queue.png'))
+    st.image(os.path.join(storage_path, 'active_queue.png'))
+    st.image(os.path.join(storage_path, 'history_queue.png'))
 
-    with st.expander('Sample Occupancy Diagram'):
-        st.image(os.path.join(storage_path, 'cpo_data.png'))
+    # with st.expander('Sample Occupancy Diagram'):
+    st.write('Sample Occupancy')
+    st.image(os.path.join(storage_path, 'cpo_data.png'))
 
     # visualize dataframes in tables
     co_list = ("priority", "sample_number", "task_type", "device", "channel", "status", "task")
