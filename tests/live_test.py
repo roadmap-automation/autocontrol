@@ -88,8 +88,6 @@ def live_test():
     print('Program exit.')
 
 
-
-
 if __name__ == '__main__':
     live_test()
     autocontrol.support.terminate_processes()

@@ -115,6 +115,9 @@ class autocontrol:
         :return: True if ready, False if not.
         """
         for i, subtask in enumerate(task.tasks):
+            if 'execution_response' in subtask.md and 'Success.' in subtask.md['execution_response']:
+                # subtask was previously flagged as successfuly completed
+                continue
             device = self.get_device_object(subtask.device)
             request_status, device_status, channel_status_list = device.get_device_and_channel_status()
             if request_status != Status.SUCCESS:
