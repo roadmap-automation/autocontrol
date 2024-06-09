@@ -89,39 +89,44 @@ class Device(object):
         :param channel: 	(int) default=0, the channel to be used.
         :return status: 	(Status) channel status
         """
-        if self.test:
-            return Status.IDLE
+        request_status, _, channel_status = self.get_device_and_channel_status()
 
-        request_status, device_status = self.get_status()
-        if request_status != Status.SUCCESS:
-            return Status.ERROR
-
-        channel_status = device_status['channel_status']
         if len(channel_status) <= channel:
-            return Status.ERROR
+            return Status.ERROR, None
 
-        ret = autocontrol.status.get_status_member(channel_status[channel])
-        if ret is None:
-            ret = Status.ERROR
-
-        return ret
+        return request_status, channel_status[channel]
 
     def get_device_status(self):
         """
         Retrieves the status of a device independent of its channels
-        :return status: (Status) device status
+        :return status: (Status, Status) request and device status
+        """
+        request_status, device_status, _ = self.get_device_and_channel_status()
+        return request_status, device_status
+
+    def get_device_and_channel_status(self):
+        """
+        Retrieves the status of a device and its channels
+        :return: (Status, Status, [Status]) request status, device status, list of channel status
         """
         if self.test:
-            return Status.IDLE
+            return Status.SUCCESS, Status.IDLE, [Status.IDLE] * self.number_of_channels
 
         request_status, device_status = self.get_status()
         if request_status != Status.SUCCESS:
-            return Status.ERROR
+            return request_status, None, None
 
-        ret = autocontrol.status.get_status_member(device_status['status'])
-        if ret is None:
-            ret = Status.ERROR
-        return ret
+        device_status = autocontrol.status.get_status_member(device_status['status'])
+        if device_status is None:
+            device_status = Status.ERROR
+
+        channel_status_list = device_status['channel_status']
+        for i, channel_status in enumerate(channel_status_list):
+            channel_status_list[i] = autocontrol.status.get_status_member(channel_status)
+            if channel_status_list[i] is None:
+                channel_status_list[i] = Status.ERROR
+
+        return request_status, device_status, channel_status_list
 
     def get_status(self):
         """
@@ -173,12 +178,14 @@ class Device(object):
         if self.test:
             return self.standard_test_response(subtask)
 
-        status = self.get_device_status()
-        if status != Status.IDLE:
-            return Status.ERROR, 'Device is not idle.'
-
+        request_status, device_status = self.get_device_status()
+        if request_status != Status.SUCCESS:
+            response = 'Cannot get device status for {}.'.format(self.name)
+            return Status.ERROR, response
+        if device_status != Status.IDLE:
+            response = 'Device {} is not idle.'.format(self.name)
+            return Status.ERROR, response
         status, ret = self.communicate(endpoint, subtask.json())
-
         return status, ret
 
     def standard_test_response(self, subtask):

@@ -130,7 +130,7 @@ def get_new_data(storage_path, identifier_list):
     if not priority_queue.empty:
         priority_queue['status'] = priority_queue.apply(lambda row: retrieve_md_key(row, key_strs=('submission_response', 'submission_device_response')), axis=1)
     if not active_queue.empty:
-        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_strs=('submission_response', 'submission_device_response')), axis=1)
+        active_queue['status'] = active_queue.apply(lambda row: retrieve_md_key(row, key_strs=('execution_response',)), axis=1)
     if not history_queue.empty:
         history_queue['status'] = history_queue.apply(lambda row: retrieve_md_key(row, key_strs=('execution_response',)), axis=1)
 

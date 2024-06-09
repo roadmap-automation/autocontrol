@@ -52,10 +52,17 @@ def merge_dict(dict1=None, dict2=None):
     return merged_dict
 
 
-def reterror(flag, subtask, i, task, resp):
-    resp += ' Device: {}.'.format(subtask.device)
-    resp += ' Subtask: {}.'.format(i + 1)
-    subtask.md['submission_response'] = resp
+def reterror(flag, subtask, i, task, resp, response_type='submission'):
+    resp += '; device: {}.'.format(subtask.device)
+    resp += '; subtask: {}.'.format(i + 1)
+    if response_type == 'submission':
+        subtask.md['submission_response'] = resp
+    elif response_type == 'execution':
+        subtask.md['execution_response'] = resp
+    else:
+        flag = False
+        resp = 'Internal error in function reterror(). Wrong response type.'
+        subtask.md['internal_error'] = resp
     return flag, task, resp
 
 
@@ -107,21 +114,36 @@ class autocontrol:
         :param task: The task.
         :return: True if ready, False if not.
         """
-        for subtask in task.tasks:
+        for i, subtask in enumerate(task.tasks):
             device = self.get_device_object(subtask.device)
+            request_status, device_status, channel_status_list = device.get_device_and_channel_status()
+            if request_status != Status.SUCCESS:
+                response = 'Status request unsuccesful with response: {}'.format(request_status.name)
+                _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
+                task.md['execution_response'] = response
+                return False
             if subtask.channel is None:
                 # channel-less task such as init
-                status = device.get_device_status()
-                if status != Status.IDLE and status != Status.UP:
+                if device_status != Status.IDLE and device_status != Status.UP:
                     # device is not ready to accept new commands and therefore, the current one is not finished
+                    response = 'Not finished. Device status: {}'.format(device_status.name)
+                    _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
+                    task.md['execution_response'] = response
                     return False
             else:
                 # get channel-dependent status
-                channel_status = device.get_channel_status(subtask.channel)
+                # Task is collected if channel is idle, even if device is still busy.
+                channel_status = channel_status_list[subtask.channel]
                 if channel_status != Status.IDLE and channel_status != Status.UP:
-                    # task not done
+                    response = 'Not finished. Channel {} status: {}'.format(subtask.channel, device_status.name)
+                    _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
+                    task.md['execution_response'] = response
                     return False
+            response = 'Success.'
+            _, task, response = reterror(False, subtask, i, task, response, response_type='execution')
+
         # passed all tests, task has been finished
+        task.md['execution_response'] = 'Success.'
         return True
 
     def find_free_channels(self, subtask, sample_number):
@@ -425,12 +447,28 @@ class autocontrol:
                     _, task, response = reterror(False, subtask, i, task, 'Unknown device')
                     task.md['submission_response'] = response
                     return False, task
-                device_status = device.get_device_status()
+                request_status, device_status, channel_status = device.get_device_and_channel_status()
+                if request_status != Status.SUCCESS:
+                    response = 'Could not get status from device. Request status: {}'.format(request_status.name)
+                    _, task, response = reterror(False, subtask, i, task, response)
+                    task.md['submission_response'] = response
+                    return False, task
                 if not (device_status == Status.UP or device_status == Status.IDLE):
                     response = 'Waiting. Device status is {}.'.format(device_status.name,)
                     _, task, response = reterror(False, subtask, i, task, response)
                     task.md['submission_response'] = response
                     return False, task
+                # For manual channel selection, we can do a preliminary status check on the channel already here. The
+                # task handlers below will do other tests, and the actual submission of the task to the device is
+                # another place where channels will be checked. An early elimination here will save communication
+                # overhead.
+                if subtask.channel is not None:
+                    status = channel_status[subtask.channel]
+                    if status != Status.UP and status != Status.IDLE:
+                        response = 'Waiting. Channel status is {}.'.format(status.name,)
+                        _, task, response = reterror(False, subtask, i, task, response)
+                        task.md['submission_response'] = response
+                        return False, task
 
         task_handlers = {
             TaskType.INIT: self.pre_process_init,
@@ -447,11 +485,11 @@ class autocontrol:
         if task_handlers[task.task_type] is not None:
             # perform pre-processing and checks
             execute_task, task, resp = task_handlers[task.task_type](task)
+            task.md['submission_response'] = resp
         else:
             # currently no checks / pre-processing implemented
             execute_task = True
-            resp = 'Success. No check performed.'
-        task.md['submission_response'] = resp
+            task.md['submission_response'] = 'Success. No check performed.'
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
         # another layer of protection against cases which are not caught by checks on the physical and operational
@@ -482,10 +520,9 @@ class autocontrol:
                     task_success = False
 
             # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
-            #   in a transfer is returning a non-success status.
-            #   For this, we need to implement abort methods and need to pull tasks already started from the instrument.
-            #   Another option is implementing a hold-and-confirm logic. Or the subtasks need to self-abort after
-            #   a while.
+            #   in a transfer is returning a non-success status. For this, we need to implement abort methods and need
+            #   to pull tasks already started from the instrument. Another option is implementing a hold-and-confirm
+            #   logic. Or the subtasks need to self-abort after a while.
 
             if task_success:
                 task.md['submission_device_response'] = 'Task successfully submitted.'
@@ -514,16 +551,21 @@ class autocontrol:
 
         elif task.task_type == TaskType.MEASURE:
             # get measurment data
-
-            status = device.get_device_status()
-            if status != Status.IDLE and status != Status.UP:
-                task.md['execution_response'] = 'Device busy or down. Cannot read out data.'
+            request_status, device_status = device.get_device_status()
+            if request_status != Status.SUCCESS:
+                response = 'Cannot get status from device {}. Cannot read out data'.format(task.tasks[0].device)
+                task.md['execution_response'] = response
                 self.active_tasks.replace(task, task.id)
                 return False
-
+            if device_status != Status.IDLE and device_status != Status.UP:
+                response = 'Device {} busy or down. Cannot read out data.'.format(task.tasks[0].device)
+                task.md['execution_response'] = response
+                self.active_tasks.replace(task, task.id)
+                return False
             read_status, data = device.read(channel=task.tasks[0].channel)
             if read_status != Status.SUCCESS:
-                task.md['execution_response'] = 'Failure reading measurement data.'
+                response = 'Failure reading measurement data from device {}.'.format(task.tasks[0].device)
+                task.md['execution_response'] = response
                 self.active_tasks.replace(task, task.id)
                 return False
 
@@ -726,6 +768,8 @@ class autocontrol:
                 # task is ready for collection
                 if self.post_process_task(task):
                     collected = True
+            else:
+                self.active_tasks.replace(task, task.id)
 
         return collected
 

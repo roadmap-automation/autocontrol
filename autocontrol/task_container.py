@@ -109,13 +109,13 @@ class TaskContainer:
         else:
             query = """SELECT task FROM task_table"""
             cursor.execute(query)
-        result = cursor.fetchone()
+        result = cursor.fetchall()
 
         # Use a set to avoid duplicate channel numbers
         channels = set()
         if result is not None:
             for element in result:
-                tsk = task_struct.Task.parse_raw(element)
+                tsk = task_struct.Task.parse_raw(element[0])
                 for subtask in tsk.tasks:
                     if device_name is None or subtask.device == device_name:
                         if subtask.channel is not None:
