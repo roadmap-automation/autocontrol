@@ -369,9 +369,6 @@ class autocontrol:
         :return: success flag, the task, response (bool, task.Task, str)
         """
 
-        # A transfer task should have a source channel which is already occupied by the sample that is being
-        # transferred.
-
         for i, subtask in enumerate(task.tasks):
             if subtask.device not in self.channel_po:
                 return reterror(False, subtask, i, task, 'Device not intialized.')
@@ -379,7 +376,7 @@ class autocontrol:
             # check for consistency between non-channel and channel transfers:
             if subtask.non_channel_storage is not None and subtask.channel is not None:
                 return reterror(False, subtask, i, task,
-                                'Channel and non-channel storage for simultaneously provided.')
+                                'Transfer rejected. Channel and non-channel storage simultaneously provided.')
 
             # check if source device is passive
             device_obj = self.get_device_object(subtask.device)
@@ -398,36 +395,41 @@ class autocontrol:
                 if i == 0:
                     if cpol[subtask.channel] is None:
                         # A transfer with a manual channel number can create a new sample
+                        # TODO: This is a wanted behaviour for the liquid handler but seems risky to create
+                        #  samples out of thin air without a prepare. On the other hand, how to handle stock
+                        #  solutions that can serve as a source for multiple samples? Maybe more logic needed?
                         cpol[subtask.channel] = task
-                        return True, task, 'Success. Created sample on transfer.'
+                        response = 'Success. Created sample on transfer.'
+                        _, task, _, = reterror(False, subtask, i, task, response)
                     elif cpol[subtask.channel].sample_number != sample_number:
                         return reterror(False, subtask, i, task, 'Wrong sample in source channel.')
                 elif not device_obj.passive:
                     if cpol[subtask.channel].sample_number is not None:
                         return reterror(False, subtask, i, task, 'Device channel not empty.')
-                return True, task, 'Success.'
 
-            if subtask.non_channel_storage is not None:
+            elif subtask.non_channel_storage is not None:
                 # no need to identify target channel
-                return True, task, 'Success. Non-channel transfer has no checks.'
+                response = 'Success. Non-channel transfer has no checks.'
+                _, task, _, = reterror(False, subtask, i, task, response)
 
-            # No channel or non-channel storage given. Find a channel.
-            if i == 0:
-                # Source device. Find the sample based on sample number. If there are multiple, transfer the one with
-                # the highest priority.
-                best_channel = None
-                for j, channel_task in enumerate(cpol):
-                    if channel_task is not None and channel_task.sample_number == sample_number:
-                        if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
-                            best_channel = j
-                if best_channel is None:
-                    return False, task, 'Channel auto-select did not find the sample to transfer.'
-                subtask.channel = best_channel
             else:
-                # one of the target devices
-                success, subtask, response = self.find_free_channels(subtask, task.sample_number)
-                if not success:
-                    return False, task, response
+                # No channel or non-channel storage given. Find a channel.
+                if i == 0:
+                    # Source device. Find the sample based on sample number. If there are multiple, transfer the one
+                    # with the highest priority.
+                    best_channel = None
+                    for j, channel_task in enumerate(cpol):
+                        if channel_task is not None and channel_task.sample_number == sample_number:
+                            if best_channel is None or cpol[best_channel].priority > cpol[i].priority:
+                                best_channel = j
+                    if best_channel is None:
+                        return False, task, 'Channel auto-select did not find the sample to transfer.'
+                    subtask.channel = best_channel
+                else:
+                    # one of the target devices
+                    success, subtask, response = self.find_free_channels(subtask, task.sample_number)
+                    if not success:
+                        return False, task, response
 
         return True, task, 'Success.'
 
@@ -450,6 +452,10 @@ class autocontrol:
         # identify the device based on the device name and check status, except for init tasks
         # there, the device might not be initialized yet
         if task.task_type != TaskType.INIT:
+            # Remove previous submission responses from task and subtasks
+            task.md['submission_response'] = ''
+            for i, subtask in enumerate(task.tasks):
+                subtask.md['submission_response'] = ''
             # Devices must be up or idle to submit any tasks
             for i, subtask in enumerate(task.tasks):
                 device = self.get_device_object(subtask.device)
@@ -481,6 +487,9 @@ class autocontrol:
                         task.md['submission_response'] = response
                         return False, task
 
+                response = 'Subtask passed pre-submission checks.'
+                _, task, _, = reterror(False, subtask, i, task, response)
+
         task_handlers = {
             TaskType.INIT: self.pre_process_init,
             TaskType.SHUTDOWN: None,
@@ -500,7 +509,7 @@ class autocontrol:
         else:
             # currently no checks / pre-processing implemented
             execute_task = True
-            task.md['submission_response'] = 'Success. No check performed.'
+            task.md['submission_response'] = 'Success. No check performed for this task type.'
 
         # Check if the device and channel of the task interferes with an ongoing task of the same sample number. This is
         # another layer of protection against cases which are not caught by checks on the physical and operational
