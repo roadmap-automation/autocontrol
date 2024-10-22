@@ -1,7 +1,13 @@
 {
     "version": "0.1",
     "configurations": [
-
+        {
+            "name": "Python Debugger: Launch Autocontrol",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "launch.py",
+            "console": "integratedTerminal"
+        },
         {
             "name": "Python: Current File, Frank",
             "type": "debugpy",
