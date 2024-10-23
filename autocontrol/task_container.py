@@ -255,6 +255,35 @@ class TaskContainer:
 
         return result
 
+    def get_task_by_sample_number(self, sample_number):
+        """
+        Retrieves all tasks with the same sample number from the container.
+        :param sample_number: sample number
+        :return: list of tasks or None
+        """
+
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT task FROM task_table WHERE sample_number=:sample_number",
+                       {'sample_number': int(sample_number)})
+        result = cursor.fetchall()
+
+        if result is not None:
+            ret = []
+            for entry in result:
+                # deserialize tasks and append to results list
+                ret.append(task_struct.Task.parse_raw(entry[0]))
+        else:
+            ret = None
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        return ret
+
     def put(self, task):
         """
         Stores a task in the SQLite database
