@@ -697,6 +697,45 @@ class autocontrol:
                     # same logic as before for dependency on sample id
                     break
 
+            # check for route through devices concerning non-sample mixing flags, this is a simple check that needs to
+            # be more detailed for complex networks or dissimilar routes of subsequent samples
+            route_check = False
+            # no route check for init or shutdown tasks
+            if task.task_type != TaskType.INIT and task.task_type != TaskType.SHUTDOWN:
+                for device in self.devices:
+                    if not self.devices[device]['sample_mixing']:
+                        route_check = True
+                        break
+            if route_check:
+                # The channel number does not need to be known here if set automatically. It is just to establish
+                # a potential route through the network.
+                route_ok = True
+                device_list_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
+                                                                     device_name=task.tasks[0].device,
+                                                                     channel=task.tasks[0].channel)
+                for device in device_list_on_route:
+                    if device in self.devices and self.devices[device]['sample_mixing'] is not None:
+                        # need to compare sample number to number of channels in device that does not allow for
+                        # sample mixing and the lowest sample number in the queue
+                        device_object = self.get_device_object(device)
+                        num_channels = device_object.number_of_channels
+                        sample_number = task.sample_number
+                        lowest_sample_number = self.queue.get_lowest_sample_number()
+
+                        if lowest_sample_number is None:
+                            # no other tasks in queue, safe to execute the current task
+                            break
+                        if (sample_number - lowest_sample_number) > (num_channels - 1):
+                            # not enough channels on device to avoid sample mixing, cannot execute current task
+                            route_ok = False
+                            break
+
+                if not route_ok:
+                    # a conflict with a non-sample-number-mixing device has been found for the current sample number
+                    # this will end this method and, thereby, stop submission of tasks with this sample number and
+                    # higher until sufficient tasks of higher priority (lower sample number) have finished
+                    break
+
             # task-type specific checks on tasks and submission
             success, task = self.process_task(task)
             if success:

@@ -26,6 +26,7 @@ def integration_test():
             device_type='qcmd',
             device_address='https:hereitcomes',
             number_of_channels=1,
+            sample_mixing=False,
             simulated=True,
             md={'description': 'QCMD init'}
         )]
