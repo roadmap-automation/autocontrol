@@ -761,7 +761,7 @@ class autocontrol:
 
         # Check sample number and id.
         if task.sample_number is None and task.sample_id is None:
-            # no number or id given, defaults to sample number 0 and default id
+            # no number or id given, defaults to sample number 1 and default id
             task.sample_number = 1
 
         if task.sample_number is not None and task.sample_id is not None:
@@ -795,15 +795,16 @@ class autocontrol:
 
         self.sample_id_to_number[task.sample_id] = task.sample_number
 
-        # create a priority value with the following importance
-        # 1. Sample number
-        # 2. Time that step was submitted
-        # convert time to a priority <1
-        p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
-        # convert sample number to priority, always overriding start time.
-        priority = task.sample_number * (-1.)
-        priority -= p1
-        task.priority = priority
+        if task.priority is None:
+            # create a priority value with the following importance
+            # 1. Sample number
+            # 2. Time that step was submitted
+            # convert time to a priority <1
+            p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
+            # convert sample number to priority, always overriding start time.
+            priority = task.sample_number * (-1.)
+            priority -= p1
+            task.priority = priority
 
         self.queue.put(task)
         return True, 'Task succesfully enqueued.'
