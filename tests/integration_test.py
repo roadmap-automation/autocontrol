@@ -140,10 +140,14 @@ def integration_test():
     time.sleep(5)
 
     # Wait for user input
-    _ = input("Please enter some text and press Enter to stop server and all processes: ")
+    _ = input("Please enter to stop the autocontrol server.")
 
     # ------------------ Stopping Flask Server ----------------------------------
     autocontrol.support.stop(portnumber=port)
+    time.sleep(5)
+
+    _ = input("Please enter to stop Streamlit and all processes.")
+
     print('Integration test done.')
     print('Program exit.')
 

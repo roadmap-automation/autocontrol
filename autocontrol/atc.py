@@ -644,6 +644,15 @@ class autocontrol:
                     serialized[key] = [obj.json() for obj in serialized[key] if obj is not None]
             json.dump(serialized, f, indent=4)
 
+    def queue_cancel(self, task_id):
+        """
+        Cancels a task in the queue. The method does not test whether the task exists prior to cancelling.
+        :param task_id: the task id as a string or UUID
+        :return: no return value
+        """
+
+        self.queue.remove(task_id)
+
     def queue_execute_one_item(self):
         """
         This is an external API method
@@ -807,7 +816,7 @@ class autocontrol:
             task.priority = priority
 
         self.queue.put(task)
-        return True, 'Task succesfully enqueued.'
+        return True, task.id, 'Task succesfully enqueued.'
 
     def reset(self):
         """
