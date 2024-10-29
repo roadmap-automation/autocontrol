@@ -239,10 +239,10 @@ class TaskContainer:
         :param sample_number: the sample number
         :param device_name: the device name
         :param channel: the channel
-        :return: list of device names or None
+        :return: set of tuples of device names and channels, or None if there are no future devices
         """
 
-        device_list = set()
+        device_set = set()
         current_device = device_name
         current_channel = channel
 
@@ -276,9 +276,9 @@ class TaskContainer:
                     for subtask in task.tasks:
                         current_device = subtask.device
                         current_channel = subtask.channel
-                        device_list.add(current_device)
+                        device_set.add((current_device, current_channel))
 
-        return list(device_list)
+        return device_set
 
     def get_lowest_sample_number(self):
         """

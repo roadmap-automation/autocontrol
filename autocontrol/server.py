@@ -167,8 +167,9 @@ def queue_put():
     try:
         task = Task(**data)
         # put request in autocontrol queue
-        success, task_id, response = atc.queue_put(task=task)
+        success, task_id, sample_number, response = atc.queue_put(task=task)
         retdict['task_id'] = task_id
+        retdict['sample_number'] = sample_number
         retdict['response'] = response
     except ValidationError:
         abort(400, description='Failed to deserialize task.')

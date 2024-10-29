@@ -280,6 +280,7 @@ class autocontrol:
         self.devices[device_name]['device_type'] = device_type
         self.devices[device_name]['device_address'] = device_address
         self.devices[device_name]['sample_mixing'] = sample_mixing
+        self.devices[device_name]['reservations'] = {}
 
         return True, task, 'Success.'
 
@@ -709,21 +710,29 @@ class autocontrol:
             # check for route through devices concerning non-sample mixing flags, this is a simple check that needs to
             # be more detailed for complex networks or dissimilar routes of subsequent samples
             route_check = False
+            if 'route_check' in task.md:
+                task.md['route_check'] = ''
+
             # no route check for init or shutdown tasks
             if task.task_type != TaskType.INIT and task.task_type != TaskType.SHUTDOWN:
                 for device in self.devices:
                     if not self.devices[device]['sample_mixing']:
                         route_check = True
                         break
-            if route_check:
+
+            if not route_check:
+                route_response = 'No route check as there are no no-sample-mixing devices.'
+            else:
                 # The channel number does not need to be known here if set automatically. It is just to establish
                 # a potential route through the network.
                 route_ok = True
-                device_list_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
-                                                                     device_name=task.tasks[0].device,
-                                                                     channel=task.tasks[0].channel)
-                for device in device_list_on_route:
-                    if device in self.devices and self.devices[device]['sample_mixing'] is not None:
+                device_set_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
+                                                                    device_name=task.tasks[0].device,
+                                                                    channel=task.tasks[0].channel)
+                for device_channel in device_set_on_route:
+                    device = device_channel[0]
+                    channel = device_channel[1]
+                    if device in self.devices and not self.devices[device]['sample_mixing']:
                         # need to compare sample number to number of channels in device that does not allow for
                         # sample mixing and the lowest sample number in the queue
                         device_object = self.get_device_object(device)
@@ -732,12 +741,31 @@ class autocontrol:
                         lowest_sample_number = self.queue.get_lowest_sample_number()
 
                         if lowest_sample_number is None:
-                            # no other tasks in queue, safe to execute the current task
+                            route_response = 'No other tasks in queue, safe to execute the current task'
                             break
                         if (sample_number - lowest_sample_number) > (num_channels - 1):
-                            # not enough channels on device to avoid sample mixing, cannot execute current task
+                            route_response = ('Not enough channels on device to avoid sample mixing, '
+                                              'cannot execute current task.')
                             route_ok = False
                             break
+                        if channel is not None:
+                            # manual channel selection, check if it clashes with a reservation from a higher priority
+                            # sample number
+                            for test_sample_number in range(lowest_sample_number, sample_number):
+                                if self.queue.get_task_by_sample_number(test_sample_number) is not None:
+                                    if (str(test_sample_number) in self.devices[device]['reservations'] and
+                                            channel in self.devices[device]['reservations'][str(test_sample_number)]):
+                                        route_response = ('channel of that non-sample-mixing device in use by higher '
+                                                          'priority sample')
+                                        route_ok = False
+                                        break
+                            if not route_ok:
+                                break
+                        route_response = 'Route check passed.'
+                else:
+                    route_response = 'Route check passed. There is no no-sample-mixing device on route.'
+
+                task.md['route_check'] = route_response
 
                 if not route_ok:
                     # a conflict with a non-sample-number-mixing device has been found for the current sample number
@@ -768,12 +796,13 @@ class autocontrol:
         :return: (Bool, str) success flag, descriptionn
         """
 
-        # Check sample number and id.
+        # Resolve when neither sample number nor ID are providef
         if task.sample_number is None and task.sample_id is None:
             # no number or id given, defaults to sample number 1 and default id
             task.sample_number = 1
 
         if task.sample_number is not None and task.sample_id is not None:
+            # Check for consistency if both, sample number and ID, are provided
             if (task.sample_id not in self.sample_id_to_number and task.sample_number not in
                     self.sample_id_to_number.values()):
                 # sample ID and number are both new
@@ -786,24 +815,30 @@ class autocontrol:
                 return False, "Task not submitted. Sample number and ID do not match previous submission."
 
         elif task.sample_id is not None:
-            # create a sample number if none present
+            # only sample ID provided -> create or look up sample number
             if not self.sample_id_to_number:
+                # no sample number / sample ID pairs stored so far
                 task.sample_number = 1
             else:
                 if task.sample_id in self.sample_id_to_number:
+                    # sample number / sample ID pair exists -> reuse number
                     task.sample_number = self.sample_id_to_number[task.sample_id]
                 else:
+                    # sample number / sample ID pair does not exist -> create new sample number
                     task.sample_number = max(self.sample_id_to_number.values()) + 1
         else:
-            # create a sample id
+            # only sample number provided -> create or look up sample id
             if task.sample_number in self.sample_id_to_number.values():
+                # sample number exists -> reverse lookup from dictionary
                 sitn = self.sample_id_to_number
                 task.sample_id = list(sitn.keys())[list(sitn.values()).index(task.sample_number)]
             else:
+                # sample number is new -> create ID for it
                 task.sample_id = uuid.uuid4()
 
         self.sample_id_to_number[task.sample_id] = task.sample_number
 
+        # take care of the task priority field
         if task.priority is None:
             # create a priority value with the following importance
             # 1. Sample number
@@ -815,8 +850,19 @@ class autocontrol:
             priority -= p1
             task.priority = priority
 
+        # Reserve channels for non-sample-mixing devices if they are manually set. These reservations will later be
+        # used when checking routes through the device network for clashes with higher priority samples
+        for subtask in task.tasks:
+            channel = subtask.channel
+            sample_number = task.sample_number
+            device_name = subtask.device
+            if channel is not None and device_name in self.devices and not self.devices[device_name]['sample_mixing']:
+                if str(sample_number) not in self.devices[device_name]['reservations']:
+                    self.devices[device_name]['reservations'][str(sample_number)] = set()
+                self.devices[device_name]['reservations'][str(sample_number)].add(channel)
+
         self.queue.put(task)
-        return True, task.id, 'Task succesfully enqueued.'
+        return True, task.id, task.sample_number, 'Task succesfully enqueued.'
 
     def reset(self):
         """
