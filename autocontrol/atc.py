@@ -264,6 +264,7 @@ class autocontrol:
         device_type = subtask.device_type
         device_address = subtask.device_address
         simulated = subtask.simulated
+        sample_mixing = subtask.sample_mixing
 
         if device_type == 'injection' or device_type == 'INJECTION':
             device_object = injection_device(name=device_name, address=device_address, simulated=simulated)
@@ -278,6 +279,7 @@ class autocontrol:
         self.devices[device_name]['device_object'] = device_object
         self.devices[device_name]['device_type'] = device_type
         self.devices[device_name]['device_address'] = device_address
+        self.devices[device_name]['sample_mixing'] = sample_mixing
 
         return True, task, 'Success.'
 
@@ -404,7 +406,7 @@ class autocontrol:
                     elif cpol[subtask.channel].sample_number != sample_number:
                         return reterror(False, subtask, i, task, 'Wrong sample in source channel.')
                 elif not device_obj.passive:
-                    if cpol[subtask.channel].sample_number is not None:
+                    if cpol[subtask.channel] is not None:
                         return reterror(False, subtask, i, task, 'Device channel not empty.')
 
             elif subtask.non_channel_storage is not None:
@@ -449,13 +451,14 @@ class autocontrol:
         :return: (bool, str) success flag, response string
         """
 
+        # Remove previous submission responses from task and subtasks
+        task.md['submission_response'] = ''
+        for i, subtask in enumerate(task.tasks):
+            subtask.md['submission_response'] = ''
+
         # identify the device based on the device name and check status, except for init tasks
         # there, the device might not be initialized yet
         if task.task_type != TaskType.INIT:
-            # Remove previous submission responses from task and subtasks
-            task.md['submission_response'] = ''
-            for i, subtask in enumerate(task.tasks):
-                subtask.md['submission_response'] = ''
             # Devices must be up or idle to submit any tasks
             for i, subtask in enumerate(task.tasks):
                 device = self.get_device_object(subtask.device)
@@ -641,6 +644,15 @@ class autocontrol:
                     serialized[key] = [obj.json() for obj in serialized[key] if obj is not None]
             json.dump(serialized, f, indent=4)
 
+    def queue_cancel(self, task_id):
+        """
+        Cancels a task in the queue. The method does not test whether the task exists prior to cancelling.
+        :param task_id: the task id as a string or UUID
+        :return: no return value
+        """
+
+        self.queue.remove(task_id)
+
     def queue_execute_one_item(self):
         """
         This is an external API method
@@ -670,24 +682,81 @@ class autocontrol:
         i = 0
         while i < len(task_priority):
             task_type = task_priority[i]
-            # retrieve job from queue
+            # retrieve job from queue but do not remove, do not retrieve tasks with blocked sample numbers
             task = self.queue.get_and_remove_by_priority(task_type=task_type, remove=False,
                                                          blocked_samples=blocked_samples)
             if task is None:
                 # no job of this priority found, move on to next priority group (task type)
                 i += 1
-            elif task.sample_number not in blocked_samples:
-                success, task = self.process_task(task)
-                if success:
-                    # remove task from queue
-                    self.queue.remove(task_id=task.id)
-                    # a succesful job ends the execution of this method
+                continue
+
+            # task dependency on sample number
+            if task.dependency_sample_number is not None:
+                higher_priority_task = self.queue.get_task_by_sample_number(sample_number=task.dependency_sample_number)
+                if higher_priority_task is not None:
+                    # a task dependency has been found based on sample number
+                    # this will end this method and, thereby, stop submission of tasks with this sample number and
+                    # higher until the dependency is resolved
                     break
-                else:
-                    # this sample number is now blocked as processing of the job was not successful
-                    blocked_samples.append(task.sample_number)
-                    # modify the task in the queue because a submission response whas added
-                    self.queue.replace(task, task_id=task.id)
+
+            # task dependency on sample id
+            if task.dependency_id is not None:
+                higher_priority_task = self.queue.get_task_by_id(task_id=task.dependency_id)
+                if higher_priority_task is not None:
+                    # same logic as before for dependency on sample id
+                    break
+
+            # check for route through devices concerning non-sample mixing flags, this is a simple check that needs to
+            # be more detailed for complex networks or dissimilar routes of subsequent samples
+            route_check = False
+            # no route check for init or shutdown tasks
+            if task.task_type != TaskType.INIT and task.task_type != TaskType.SHUTDOWN:
+                for device in self.devices:
+                    if not self.devices[device]['sample_mixing']:
+                        route_check = True
+                        break
+            if route_check:
+                # The channel number does not need to be known here if set automatically. It is just to establish
+                # a potential route through the network.
+                route_ok = True
+                device_list_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
+                                                                     device_name=task.tasks[0].device,
+                                                                     channel=task.tasks[0].channel)
+                for device in device_list_on_route:
+                    if device in self.devices and self.devices[device]['sample_mixing'] is not None:
+                        # need to compare sample number to number of channels in device that does not allow for
+                        # sample mixing and the lowest sample number in the queue
+                        device_object = self.get_device_object(device)
+                        num_channels = device_object.number_of_channels
+                        sample_number = task.sample_number
+                        lowest_sample_number = self.queue.get_lowest_sample_number()
+
+                        if lowest_sample_number is None:
+                            # no other tasks in queue, safe to execute the current task
+                            break
+                        if (sample_number - lowest_sample_number) > (num_channels - 1):
+                            # not enough channels on device to avoid sample mixing, cannot execute current task
+                            route_ok = False
+                            break
+
+                if not route_ok:
+                    # a conflict with a non-sample-number-mixing device has been found for the current sample number
+                    # this will end this method and, thereby, stop submission of tasks with this sample number and
+                    # higher until sufficient tasks of higher priority (lower sample number) have finished
+                    break
+
+            # task-type specific checks on tasks and submission
+            success, task = self.process_task(task)
+            if success:
+                # remove task from queue
+                self.queue.remove(task_id=task.id)
+                # a succesful task submission ends the execution of this method
+                break
+            else:
+                # this sample number is now blocked as processing of the job was not successful
+                blocked_samples.append(task.sample_number)
+                # modify the task in the queue because a submission response whas added
+                self.queue.replace(task, task_id=task.id)
 
         return success
 
@@ -701,7 +770,7 @@ class autocontrol:
 
         # Check sample number and id.
         if task.sample_number is None and task.sample_id is None:
-            # no number or id given, defaults to sample number 0 and default id
+            # no number or id given, defaults to sample number 1 and default id
             task.sample_number = 1
 
         if task.sample_number is not None and task.sample_id is not None:
@@ -735,18 +804,19 @@ class autocontrol:
 
         self.sample_id_to_number[task.sample_id] = task.sample_number
 
-        # create a priority value with the following importance
-        # 1. Sample number
-        # 2. Time that step was submitted
-        # convert time to a priority <1
-        p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
-        # convert sample number to priority, always overriding start time.
-        priority = task.sample_number * (-1.)
-        priority -= p1
-        task.priority = priority
+        if task.priority is None:
+            # create a priority value with the following importance
+            # 1. Sample number
+            # 2. Time that step was submitted
+            # convert time to a priority <1
+            p1 = time.time()/math.pow(10, math.ceil(math.log10(time.time())))
+            # convert sample number to priority, always overriding start time.
+            priority = task.sample_number * (-1.)
+            priority -= p1
+            task.priority = priority
 
         self.queue.put(task)
-        return True, 'Task succesfully enqueued.'
+        return True, task.id, 'Task succesfully enqueued.'
 
     def reset(self):
         """

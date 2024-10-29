@@ -37,6 +37,7 @@ class TaskData(BaseModel):
     channel_mode: Optional[int] = None
     number_of_channels: Optional[int] = None
     simulated: bool = False
+    sample_mixing: bool = True
 
     # for measurement tasks
     acquisition_time: Optional[float] = None
@@ -63,3 +64,6 @@ class Task(BaseModel):
     tasks: List[TaskData] = Field(default_factory=list)
     task_history: List[uuid.UUID] = Field(default_factory=list)
     task_type: TaskType
+
+    dependency_id: Optional[uuid.UUID] = None
+    dependency_sample_number: Optional[int] = None

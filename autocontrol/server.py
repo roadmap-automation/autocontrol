@@ -41,7 +41,6 @@ def background_task():
 
         time.sleep(wait_time)
 
-
 @app.route('/get_task_status/<task_id>', methods=['GET'])
 def get_task_status(task_id):
     """
@@ -99,27 +98,52 @@ def index():
     return 'Autocontrol Flask Server Started!'
 
 
+@app.route('/cancel', methods=['POST'])
+def queue_cancel():
+    """
+    POST request to cancel a submitted task from the autocontrol priority queue.
+
+    The POST data must contain the following data fields:
+    'task_id' - the id of the task to cancel as a str
+
+    :return: status string
+    """
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    data = request.get_json()
+    if data is None or not isinstance(data, dict):
+        abort(400, description='No valid data received.')
+
+    # de-serialize the POST data into a Task object
+    if 'task_id' in data:
+        # submit autocontral cancel request
+        atc.queue_cancel(task_id=data['task_id'])
+        description='Success.'
+    else:
+        abort(400, description='No task id provided.')
+
+    return description
+
+
 @app.route('/queue_inspect', methods=['GET'])
 def queue_inspect():
     """
-    Retrieves all queue items without removing them from the queue and prints them in the terminal.
-    :return: (str) status
+    Retrieves all queue items without removing them from the queue and returns them as a dict.
+    :return: (dict) formatted
     """
     queue_items = atc.queue_inspect()
-    print('Inspecting queue...')
-    print('Received {} queued items.'.format(len(queue_items)))
+    retdict = {}
     for number, item in enumerate(queue_items):
-        print('Item ' + str(number+1) + ', Priority ' + str(item['priority']) + ': ')
-        formatted_item = json.dumps(item, indent=4)
-        print(formatted_item)
-
-    return 'Queue successfully printed.'
+        serialized_task = item.json()
+        retdict['task_'+str(number)] = serialized_task
+    return retdict
 
 
 @app.route('/put', methods=['POST'])
 def queue_put():
     """
-    POST request function that puts one task onto the Bluesky priorty queue.
+    POST request function that puts one task onto the autocontrol priorty queue.
 
     The POST data must contain the following data fields:
     'task':  (task.Task) The task.
@@ -131,6 +155,7 @@ def queue_put():
 
     :return: Status string.
     """
+    retdict = {}
     if request.method != 'POST':
         abort(400, description='Request method is not POST.')
 
@@ -142,14 +167,16 @@ def queue_put():
     try:
         task = Task(**data)
         # put request in autocontrol queue
-        success, description = atc.queue_put(task=task)
+        success, task_id, response = atc.queue_put(task=task)
+        retdict['task_id'] = task_id
+        retdict['response'] = response
     except ValidationError:
         abort(400, description='Failed to deserialize task.')
 
     if not success:
-        abort(400, description=description)
+        abort(400, description=response)
 
-    return description
+    return retdict
 
 
 @app.route('/pause', methods=['POST'])
@@ -198,7 +225,7 @@ def restart():
 @app.route('/resume', methods=['POST'])
 def resume():
     """
-    POST request function that pauses the scheduling queue.
+    POST request function that resumes the scheduling queue after pausing.
     :return: Status string
     """
     global atc
@@ -222,8 +249,6 @@ def shutdown_server(wait_for_queue_to_empty=False):
     :return: Status string.
     """
     global app_shutdown
-
-    # TODO: Add a shut down task into the queue (will two shutdown tasks be a problem?)
 
     while wait_for_queue_to_empty:
         if atc.queue.empty() and atc.active_tasks.empty():

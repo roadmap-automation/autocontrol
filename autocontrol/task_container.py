@@ -233,6 +233,72 @@ class TaskContainer:
 
         return ret
 
+    def get_future_devices(self, sample_number, device_name, channel=None):
+        """
+        Retrieves a list of future devices for the given sample number. That is currently present in a certain device.
+        :param sample_number: the sample number
+        :param device_name: the device name
+        :param channel: the channel
+        :return: list of device names or None
+        """
+
+        device_list = set()
+        current_device = device_name
+        current_channel = channel
+
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT task FROM task_table WHERE sample_number=:sample_number AND task_type='transfer' ",
+                       {'sample_number': int(sample_number)})
+        result = cursor.fetchall()
+
+        if result is not None:
+            ret = []
+            for entry in result:
+                # deserialize tasks and append to results list
+                ret.append(task_struct.Task.parse_raw(entry[0]))
+        else:
+            ret = None
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        if ret is None:
+            return None
+
+        # find the first path of the sample through the network
+        for task in ret:
+            if task.tasks[0].device == current_device:
+                if current_channel is None or current_channel == task.tasks[0].channel:
+                    for subtask in task.tasks:
+                        current_device = subtask.device
+                        current_channel = subtask.channel
+                        device_list.add(current_device)
+
+        return list(device_list)
+
+    def get_lowest_sample_number(self):
+        """
+        Retrieves the lowest sample number from the container.
+        :return: sample number
+        """
+
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT MIN(sample_number) FROM task_table")
+        min_sample_number = cursor.fetchone()[0]
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        return min_sample_number
+
     def get_task_by_id(self, task_id):
         """
         Retrieves a task by its ID without removing it from the container.
@@ -254,6 +320,35 @@ class TaskContainer:
         self.lock.release()
 
         return result
+
+    def get_task_by_sample_number(self, sample_number):
+        """
+        Retrieves all tasks with the same sample number from the container.
+        :param sample_number: sample number
+        :return: list of tasks or None
+        """
+
+        self.lock.acquire()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT task FROM task_table WHERE sample_number=:sample_number",
+                       {'sample_number': int(sample_number)})
+        result = cursor.fetchall()
+
+        if result is not None:
+            ret = []
+            for entry in result:
+                # deserialize tasks and append to results list
+                ret.append(task_struct.Task.parse_raw(entry[0]))
+        else:
+            ret = None
+
+        cursor.close()
+        conn.close()
+        self.lock.release()
+
+        return ret
 
     def put(self, task):
         """
