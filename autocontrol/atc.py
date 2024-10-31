@@ -726,15 +726,11 @@ class autocontrol:
                 # The channel number does not need to be known here if set automatically. It is just to establish
                 # a potential route through the network.
                 route_ok = True
-                device_set_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
-                                                                    device_name=task.tasks[0].device,
-                                                                    channel=task.tasks[0].channel)
-                for device_channel in device_set_on_route:
-                    device = device_channel[0]
-                    channel = device_channel[1]
+                devices_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
+                                                                 device_name=task.tasks[0].device,
+                                                                 channel=task.tasks[0].channel)
+                for (device, channel) in devices_on_route:
                     if device in self.devices and not self.devices[device]['sample_mixing']:
-                        # need to compare sample number to number of channels in device that does not allow for
-                        # sample mixing and the lowest sample number in the queue
                         device_object = self.get_device_object(device)
                         num_channels = device_object.number_of_channels
                         sample_number = task.sample_number
@@ -743,20 +739,23 @@ class autocontrol:
                         if lowest_sample_number is None:
                             route_response = 'No other tasks in queue, safe to execute the current task'
                             break
-                        if (sample_number - lowest_sample_number) > (num_channels - 1):
-                            route_response = ('Not enough channels on device to avoid sample mixing, '
-                                              'cannot execute current task.')
-                            route_ok = False
-                            break
-                        if channel is not None:
+                        if channel is None:
+                            # Auto-channel selection. Channel not yet know, only compare to number of channels
+                            # available.
+                            if (sample_number - lowest_sample_number) > (num_channels - 1):
+                                route_response = ('Not enough channels on device {} to avoid sample mixing, '
+                                                  'cannot execute current task.'.format(device))
+                                route_ok = False
+                                break
+                        else:
                             # manual channel selection, check if it clashes with a reservation from a higher priority
                             # sample number
                             for test_sample_number in range(lowest_sample_number, sample_number):
-                                if self.queue.get_task_by_sample_number(test_sample_number) is not None:
+                                if self.queue.get_task_by_sample_number(test_sample_number, single=True) is not None:
                                     if (str(test_sample_number) in self.devices[device]['reservations'] and
                                             channel in self.devices[device]['reservations'][str(test_sample_number)]):
-                                        route_response = ('channel of that non-sample-mixing device in use by higher '
-                                                          'priority sample')
+                                        route_response = ('channel of non-sample-mixing device {} in use by higher '
+                                                          'priority sample'.format(device))
                                         route_ok = False
                                         break
                             if not route_ok:

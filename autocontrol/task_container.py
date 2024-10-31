@@ -113,13 +113,12 @@ class TaskContainer:
 
         # Use a set to avoid duplicate channel numbers
         channels = set()
-        if result is not None:
-            for element in result:
-                tsk = task_struct.Task.parse_raw(element[0])
-                for subtask in tsk.tasks:
-                    if device_name is None or subtask.device == device_name:
-                        if subtask.channel is not None:
-                            channels.add(subtask.channel)
+        for element in result:
+            tsk = task_struct.Task.parse_raw(element[0])
+            for subtask in tsk.tasks:
+                if device_name is None or subtask.device == device_name:
+                    if subtask.channel is not None:
+                        channels.add(subtask.channel)
 
         cursor.close()
         conn.close()
@@ -155,10 +154,9 @@ class TaskContainer:
         result = cursor.fetchall()
 
         ret = []
-        if result is not None:
-            for entry in result:
-                # deserialize tasks and append to results list
-                ret.append(task_struct.Task.parse_raw(entry[0]))
+        for entry in result:
+            # deserialize tasks and append to results list
+            ret.append(task_struct.Task.parse_raw(entry[0]))
 
         cursor.close()
         conn.close()
@@ -239,7 +237,7 @@ class TaskContainer:
         :param sample_number: the sample number
         :param device_name: the device name
         :param channel: the channel
-        :return: set of tuples of device names and channels, or None if there are no future devices
+        :return: list of tuples of device names and channels, or an empty set if there are no future devices
         """
 
         device_set = set()
@@ -254,20 +252,17 @@ class TaskContainer:
                        {'sample_number': int(sample_number)})
         result = cursor.fetchall()
 
-        if result is not None:
-            ret = []
-            for entry in result:
-                # deserialize tasks and append to results list
-                ret.append(task_struct.Task.parse_raw(entry[0]))
-        else:
-            ret = None
+        ret = []
+        for entry in result:
+            # deserialize tasks and append to results list
+            ret.append(task_struct.Task.parse_raw(entry[0]))
 
         cursor.close()
         conn.close()
         self.lock.release()
 
-        if ret is None:
-            return None
+        if not ret:
+            return []
 
         # find the first path of the sample through the network
         for task in ret:
@@ -278,7 +273,7 @@ class TaskContainer:
                         current_channel = subtask.channel
                         device_set.add((current_device, current_channel))
 
-        return device_set
+        return list(device_set)
 
     def get_lowest_sample_number(self):
         """
@@ -321,10 +316,11 @@ class TaskContainer:
 
         return result
 
-    def get_task_by_sample_number(self, sample_number):
+    def get_task_by_sample_number(self, sample_number, single=False):
         """
         Retrieves all tasks with the same sample number from the container.
         :param sample_number: sample number
+        :param single: if True, only one task will be returned
         :return: list of tasks or None
         """
 
@@ -334,15 +330,22 @@ class TaskContainer:
 
         cursor.execute("SELECT task FROM task_table WHERE sample_number=:sample_number",
                        {'sample_number': int(sample_number)})
-        result = cursor.fetchall()
 
-        if result is not None:
-            ret = []
-            for entry in result:
-                # deserialize tasks and append to results list
-                ret.append(task_struct.Task.parse_raw(entry[0]))
+        if single:
+            result = cursor.fetchone()
+            if result is not None:
+                ret = [task_struct.Task.parse_raw(result[0])]
+            else:
+                ret = None
         else:
-            ret = None
+            result = cursor.fetchall()
+            if result:
+                ret = []
+                for entry in result:
+                    # deserialize tasks and append to results list
+                    ret.append(task_struct.Task.parse_raw(entry[0]))
+            else:
+                ret = None
 
         cursor.close()
         conn.close()

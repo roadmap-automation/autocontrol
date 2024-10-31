@@ -7,6 +7,47 @@ import uuid
 port = 5004
 
 
+def submit_sample_block(qcmd_channel=None):
+    sample_id = uuid.uuid4()
+    task = tsk.Task(
+        sample_id=sample_id,
+        task_type=tsk.TaskType('prepare'),
+        tasks=[tsk.TaskData(
+            device='lh1',
+            md={'description': '{} preparation'.format(str(sample_id))},
+        )]
+    )
+    autocontrol.support.submit_task(task, port)
+
+    task = tsk.Task(
+        sample_id=sample_id,
+        task_type=tsk.TaskType('transfer'),
+        tasks=[
+            tsk.TaskData(
+                device='lh1',
+                md={'description': '{} transfer'.format(str(sample_id))},
+            ),
+            tsk.TaskData(
+                device='qcmd1',
+                channel=qcmd_channel,
+                md={'description': '{} transfer'.format(str(sample_id))},
+            )
+        ]
+    )
+    autocontrol.support.submit_task(task, port)
+
+    task = tsk.Task(
+        sample_id=sample_id,
+        task_type=tsk.TaskType('measure'),
+        tasks=[tsk.TaskData(
+            device='qcmd1',
+            channel=qcmd_channel,
+            md={'description': 'QCMD measurement {}'.format(str(sample_id))},
+        )]
+    )
+    autocontrol.support.submit_task(task, port)
+
+
 def integration_test():
     print('Starting integration test')
 
@@ -25,14 +66,14 @@ def integration_test():
             device='qcmd1',
             device_type='qcmd',
             device_address='https:hereitcomes',
-            number_of_channels=1,
+            number_of_channels=2,
             sample_mixing=False,
             simulated=True,
             md={'description': 'QCMD init'}
         )]
     )
     autocontrol.support.submit_task(task, port)
-    time.sleep(5)
+    time.sleep(0.1)
 
     task = tsk.Task(
         task_type=tsk.TaskType('init'),
@@ -46,98 +87,11 @@ def integration_test():
         )]
     )
     autocontrol.support.submit_task(task, port)
-    time.sleep(5)
+    time.sleep(0.1)
 
-    sample_id1 = uuid.uuid4()
-    task = tsk.Task(
-        sample_id=sample_id1,
-        task_type=tsk.TaskType('prepare'),
-        tasks=[tsk.TaskData(
-            device='lh1',
-            md={'description': 'Sample1 preparation'}
-        )]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    sample_id2 = uuid.uuid4()
-    task = tsk.Task(
-        sample_id=sample_id2,
-        task_type=tsk.TaskType('prepare'),
-        tasks=[tsk.TaskData(
-            device='lh1',
-            md={'description': 'Sample2 preparation'}
-        )]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    task = tsk.Task(
-        sample_id=sample_id1,
-        task_type=tsk.TaskType('transfer'),
-        tasks=[
-            tsk.TaskData(
-                device='lh1',
-                md={'description': 'Sample1 transfer'}
-            ),
-            tsk.TaskData(
-                device='qcmd1',
-                md={'description': 'Sample1 transfer'}
-            )
-        ]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    task = tsk.Task(
-        sample_id=sample_id2,
-        task_type=tsk.TaskType('transfer'),
-        tasks=[
-            tsk.TaskData(
-                device='lh1',
-                md={'description': 'Sample2 transfer'}
-            ),
-            tsk.TaskData(
-                device='qcmd1',
-                md={'description': 'Sample2 transfer'}
-            )
-        ]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    task = tsk.Task(
-        sample_id=sample_id1,
-        task_type=tsk.TaskType('measure'),
-        tasks=[tsk.TaskData(
-            device='qcmd1',
-            md={'description': 'QCMD measurement sample1'}
-        )]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    task = tsk.Task(
-        sample_id=sample_id2,
-        task_type=tsk.TaskType('measure'),
-        tasks=[tsk.TaskData(
-            device='qcmd1',
-            md={'description': 'QCMD measurement sample2'}
-        )]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
-
-    task = tsk.Task(
-        sample_id=sample_id1,
-        task_type=tsk.TaskType('nochannel'),
-        tasks=[tsk.TaskData(
-            device='lh1',
-            md={'description': 'lh rinse'}
-        )]
-    )
-    autocontrol.support.submit_task(task, port)
-    time.sleep(5)
+    submit_sample_block(qcmd_channel=0)
+    submit_sample_block(qcmd_channel=0)
+    submit_sample_block(qcmd_channel=1)
 
     # Wait for user input
     _ = input("Please enter to stop the autocontrol server.")
