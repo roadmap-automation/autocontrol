@@ -110,6 +110,9 @@ class Device(object):
         :return: (Status, Status, [Status]) request status, device status, list of channel status
         """
         if self.test:
+            # temporary hack for testing
+            if self.name == 'qcmd1':
+                return Status.SUCCESS, Status.IDLE, [Status.BUSY, Status.IDLE]
             return Status.SUCCESS, Status.IDLE, [Status.IDLE] * self.number_of_channels
 
         request_status, device_and_channel_status = self.get_status()

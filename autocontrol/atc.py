@@ -766,14 +766,14 @@ class autocontrol:
 
                 task.md['route_check'] = route_response
 
-                if not route_ok:
-                    # a conflict with a non-sample-number-mixing device has been found for the current sample number
-                    # this will end this method and, thereby, stop submission of tasks with this sample number and
-                    # higher until sufficient tasks of higher priority (lower sample number) have finished
-                    break
+            if route_check and not route_ok:
+                # a conflict with a non-sample-number-mixing device has been found for the current sample number.
+                # No further sample checks are done.
+                success = False
+            else:
+                # task-type specific checks on tasks and submission
+                success, task = self.process_task(task)
 
-            # task-type specific checks on tasks and submission
-            success, task = self.process_task(task)
             if success:
                 # remove task from queue
                 self.queue.remove(task_id=task.id)
