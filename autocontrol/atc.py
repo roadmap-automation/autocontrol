@@ -710,6 +710,7 @@ class autocontrol:
             # check for route through devices concerning non-sample mixing flags, this is a simple check that needs to
             # be more detailed for complex networks or dissimilar routes of subsequent samples
             route_check = False
+            route_ok = True
             if 'route_check' in task.md:
                 task.md['route_check'] = ''
 
@@ -719,26 +720,31 @@ class autocontrol:
                     if not self.devices[device]['sample_mixing']:
                         route_check = True
                         break
-
-            if not route_check:
                 route_response = 'No route check as there are no no-sample-mixing devices.'
-            else:
-                # The channel number does not need to be known here if set automatically. It is just to establish
-                # a potential route through the network.
+
+            lowest_sample_number = self.queue.get_lowest_sample_number()
+            if lowest_sample_number is None:
+                # no other task in queue, route check not needed
+                route_check = False
+                route_response = 'No route check as there are no other tasks queued.'
+
+            if route_check:
                 route_ok = True
                 devices_on_route = self.queue.get_future_devices(sample_number=task.sample_number,
                                                                  device_name=task.tasks[0].device,
                                                                  channel=task.tasks[0].channel)
-                for (device, channel) in devices_on_route:
-                    if device in self.devices and not self.devices[device]['sample_mixing']:
+                if not devices_on_route:
+                    route_response = 'Route check passed. There is no no-sample-mixing device on route.'
+                else:
+                    route_response = 'Route check passed.'
+                    for (device, channel) in devices_on_route:
+                        if device not in self.devices or self.devices[device]['sample_mixing']:
+                            continue
+
                         device_object = self.get_device_object(device)
                         num_channels = device_object.number_of_channels
                         sample_number = task.sample_number
-                        lowest_sample_number = self.queue.get_lowest_sample_number()
 
-                        if lowest_sample_number is None:
-                            route_response = 'No other tasks in queue, safe to execute the current task'
-                            break
                         if channel is None:
                             # Auto-channel selection. Channel not yet know, only compare to number of channels
                             # available.
@@ -748,8 +754,8 @@ class autocontrol:
                                 route_ok = False
                                 break
                         else:
-                            # manual channel selection, check if it clashes with a reservation from a higher priority
-                            # sample number
+                            # manual channel selection, check if it clashes with a reservation from a higher
+                            # priority sample number
                             for test_sample_number in range(lowest_sample_number, sample_number):
                                 if self.queue.get_task_by_sample_number(test_sample_number, single=True) is not None:
                                     if (str(test_sample_number) in self.devices[device]['reservations'] and
@@ -760,9 +766,6 @@ class autocontrol:
                                         break
                             if not route_ok:
                                 break
-                        route_response = 'Route check passed.'
-                else:
-                    route_response = 'Route check passed. There is no no-sample-mixing device on route.'
 
                 task.md['route_check'] = route_response
 
