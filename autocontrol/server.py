@@ -41,6 +41,7 @@ def background_task():
 
         time.sleep(wait_time)
 
+
 @app.route('/get_task_status/<task_id>', methods=['GET'])
 def get_task_status(task_id):
     """

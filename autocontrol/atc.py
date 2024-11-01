@@ -98,6 +98,10 @@ class autocontrol:
         # entries: dictionary with keys for device address, device object, device type
         self.devices = {}
 
+        # Reservations for devices and channels done at the time of task submission.
+        # Since the device might not be initialized, yet, a separate dictionary is required
+        self.reservations = {}
+
         # channel physical occupation
         # for each device there will be a list in this dictionary with the device name as the key. Each list has as many
         # entries as channels. Each entry is either None for not occupied, or it contains the task object last executed
@@ -280,7 +284,6 @@ class autocontrol:
         self.devices[device_name]['device_type'] = device_type
         self.devices[device_name]['device_address'] = device_address
         self.devices[device_name]['sample_mixing'] = sample_mixing
-        self.devices[device_name]['reservations'] = {}
 
         return True, task, 'Success.'
 
@@ -758,8 +761,8 @@ class autocontrol:
                             # priority sample number
                             for test_sample_number in range(lowest_sample_number, sample_number):
                                 if self.queue.get_task_by_sample_number(test_sample_number, single=True) is not None:
-                                    if (str(test_sample_number) in self.devices[device]['reservations'] and
-                                            channel in self.devices[device]['reservations'][str(test_sample_number)]):
+                                    if (str(test_sample_number) in self.reservations[device] and
+                                            channel in self.reservations[device][str(test_sample_number)]):
                                         route_response = ('channel of non-sample-mixing device {} in use by higher '
                                                           'priority sample'.format(device))
                                         route_ok = False
@@ -858,17 +861,19 @@ class autocontrol:
             channel = subtask.channel
             sample_number = task.sample_number
             device_name = subtask.device
-            if channel is not None and device_name in self.devices and not self.devices[device_name]['sample_mixing']:
-                if str(sample_number) not in self.devices[device_name]['reservations']:
-                    self.devices[device_name]['reservations'][str(sample_number)] = set()
-                self.devices[device_name]['reservations'][str(sample_number)].add(channel)
+            if channel is not None and not self.devices[device_name]['sample_mixing']:
+                if device_name not in self.reservations:
+                    self.reservations[device_name] = {}
+                if str(sample_number) not in self.reservations[device_name]:
+                    self.reservations[device_name][str(sample_number)] = set()
+                self.reservations[device_name][str(sample_number)].add(channel)
 
         self.queue.put(task)
         return True, task.id, task.sample_number, 'Task succesfully enqueued.'
 
     def reset(self):
         """
-        This is an external API method. It wipes all tasks, channel po, and sample ID information
+        This is an external API method. It wipes all tasks, channel po, reservations, and sample ID information
         :return: no return value
         """
         self.queue.clear()
@@ -881,6 +886,7 @@ class autocontrol:
                 self.channel_po[device][channel] = None
         self.store_channel_po()
         self.sample_id_to_number = {}
+        self.reservations = {}
 
     def restart(self):
         """
