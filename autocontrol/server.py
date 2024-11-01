@@ -41,6 +41,7 @@ def background_task():
 
         time.sleep(wait_time)
 
+
 @app.route('/get_task_status/<task_id>', methods=['GET'])
 def get_task_status(task_id):
     """
@@ -278,7 +279,7 @@ def start_server(hostname='localhost', port=5003, storage_path=None):
     if storage_path is None:
         storage_path = os.getcwd()
 
-    # initialize bluesky API
+    # initialize autocontrol API
     global atc
     atc = autocontrol_atc.autocontrol(storage_path=storage_path)
 
