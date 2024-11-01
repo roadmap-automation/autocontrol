@@ -106,12 +106,13 @@ def get_new_data(storage_path, identifier_list):
     priority_queue, active_queue, history_queue, channel_po, edges = load_all(storage_path=storage_path)
     channel_po_data = []
     for key in channel_po:
-        for channel, entry in enumerate(channel_po[key]):
+        for i, entry in enumerate(channel_po[key]):
             if entry is not None:
+                # device information is usually part of the subtask and therefore must be supplied here
+                entry['device'] = key
                 channel_po_data.append(entry)
                 # st.info(entry)
-                entry['channel'] = channel
-                entry['device'] = key
+
     if channel_po_data:
         channel_po_data = pd.DataFrame(channel_po_data)
     else:
@@ -196,9 +197,11 @@ def load_json_task_list(filename, storage_path):
     with open(os.path.join(storage_path, filename+'.json'), "r") as f:
         data = json.load(f)
     for key in data:
-        for channel, entry in enumerate(data[key]):
+        for i, entry in enumerate(data[key]):
             # we do not convert back to a full Task object, just to a dictionary sufficient for visualization
-            data[key][channel] = json.loads(data[key][channel])
+            data[key][i] = json.loads(data[key][i])
+            # take channel information from last task in 'tasks' subfield and elevate it
+            data[key][i]['channel'] = data[key][i]['tasks'][-1]['channel']
     return data
 
 
@@ -253,6 +256,7 @@ def render_cluster(data, graph, identifier_list, name='0', color='grey', show_de
 
         if data is not None and not data.empty:
             for index, row in data[::-1].iterrows():
+                # st.dataframe(row)
                 idstr, id_first_node, id_last_node = create_uuid(id_first_node)
                 if row['channel'] is not None and not math.isnan(row['channel']):
                     label = 'S' + str(row['sample_number']) + ' C' + str(int(row['channel'])) + '\n' + row['task_type']

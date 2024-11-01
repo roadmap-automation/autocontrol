@@ -861,7 +861,7 @@ class autocontrol:
             channel = subtask.channel
             sample_number = task.sample_number
             device_name = subtask.device
-            if channel is not None and not self.devices[device_name]['sample_mixing']:
+            if channel is not None:
                 if device_name not in self.reservations:
                     self.reservations[device_name] = {}
                 if str(sample_number) not in self.reservations[device_name]:
