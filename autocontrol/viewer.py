@@ -1,5 +1,6 @@
+import autocontrol.support
 from autocontrol import task_struct
-
+from autocontrol import support
 import argparse
 import datetime
 import graphviz
@@ -38,12 +39,10 @@ def click_pause_button():
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
         url = st.session_state.atc_address + '/pause'
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers)
+        response = autocontrol.support.pause_queue(url=url)
     else:
         url = st.session_state.atc_address + '/resume'
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers)
+        response = autocontrol.support.resume_queue(url=url)
 
     if response.status_code == 200:
         st.session_state.pause_button = not st.session_state.pause_button

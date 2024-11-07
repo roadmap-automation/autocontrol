@@ -42,7 +42,7 @@ class open_QCMD(Device):
 
         return status, retdict
 
-    def read(self, channel=None):
+    def read(self, channel=None, subtask_id=None):
         """
         Establishes an HTTP connection to the QCMD Qt app and retrieves the current data. With the current thinking, it
         is the entire data set collected since start. Thereby, qcmd_read should be called only once after stopping the
@@ -60,7 +60,7 @@ class open_QCMD(Device):
             }
             return Status.SUCCESS, ddict
 
-        return super().read(channel)
+        return super().read(channel, subtask_id)
 
     def standard_task(self, subtask, endpoint='/SubmitTask'):
         return super().standard_task(subtask, endpoint)

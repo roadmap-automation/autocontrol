@@ -45,7 +45,8 @@ def submit_sample_block(qcmd_channel=None):
             md={'description': 'QCMD measurement {}'.format(str(sample_id))},
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    # returns the submission info for this task only for testing purposes
+    return autocontrol.support.submit_task(task, port)
 
 
 def integration_test():
@@ -89,9 +90,24 @@ def integration_test():
     autocontrol.support.submit_task(task, port)
     time.sleep(0.1)
 
-    submit_sample_block(qcmd_channel=0)
-    submit_sample_block(qcmd_channel=0)
-    submit_sample_block(qcmd_channel=1)
+    measure_task_response_1 = submit_sample_block(qcmd_channel=0)
+    measure_task_response_2 = submit_sample_block(qcmd_channel=0)
+    measure_task_response_3 = submit_sample_block(qcmd_channel=1)
+
+    autocontrol.support.pause_queue(port=port)
+    _ = input("Paused queue execution. Please press enter to continue cancelling measurement task 3.")
+
+    task_id = measure_task_response_3['task_id']
+    response = autocontrol.support.cancel_task(task_id, port=port)
+    print(response)
+
+    _ = input("Task Cancelled. Please press enter to continue with a resubmission of measurement task 2.")
+    task_id = measure_task_response_2['task_id']
+    response = autocontrol.support.resubmit_task(task_id=task_id, port=port)
+    print(response)
+
+    _ = input("Task Resubmitted. Please press enter to continue queue execution.")
+    autocontrol.support.resume_queue(port=port)
 
     # Wait for user input
     _ = input("Please enter to stop the autocontrol server.")
