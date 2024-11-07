@@ -11,6 +11,47 @@ import subprocess
 import time
 
 
+def cancel_task(task_id, url=None, port=None):
+    if url is None:
+        url = url = 'http://localhost:'
+    if port is None:
+        url = url + '/cancel'
+    else:
+        url = url + str(port) + '/cancel'
+
+    data = {'task_id': task_id}
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+
+    return response
+
+
+def pause_queue(url=None, port=None):
+    if url is None:
+        url = url = 'http://localhost:'
+    if port is None:
+        url = url + '/pause'
+    else:
+        url = url + str(port) + '/pause'
+
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers)
+    return response
+
+
+def resume_queue(url=None, port=None):
+    if url is None:
+        url = url = 'http://localhost:'
+    if port is None:
+        url = url + '/resume'
+    else:
+        url = url + str(port) + '/resume'
+
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers)
+    return response
+
+
 def start_streamlit_viewer(storage_path, server_address, server_port):
     viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
     server_addr = server_address + ':' + str(server_port)

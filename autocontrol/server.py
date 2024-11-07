@@ -263,7 +263,7 @@ def task_cancel():
         # submit autocontral cancel request
         atc.queue_cancel(task_id=data['task_id'])
 
-    return 'Success.'
+    return {'response': 'Success.'}
 
 
 @app.route('/put', methods=['POST'])
