@@ -99,93 +99,6 @@ def index():
     return 'Autocontrol Flask Server Started!'
 
 
-@app.route('/cancel', methods=['POST'])
-def queue_cancel():
-    """
-    POST request to cancel a submitted task from the autocontrol priority queue.
-
-    The POST data must contain the following data fields:
-    'task_id' - the id of the task to cancel as a str
-
-    :return: status string
-    """
-    if request.method != 'POST':
-        abort(400, description='Request method is not POST.')
-
-    data = request.get_json()
-    if data is None or not isinstance(data, dict):
-        abort(400, description='No valid data received.')
-
-    if 'task_id' not in data:
-        abort(400, description='No task id provided.')
-
-    if 'include_active_queue' in data and data['include_active_queue']:
-        if 'drop_material' in data and data['drop_material']:
-            drop_material = True
-        else:
-            drop_material = False
-        atc.queue.cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
-    else:
-        # submit autocontral cancel request
-        atc.queue_cancel(task_id=data['task_id'])
-
-    return 'Success.'
-
-
-@app.route('/queue_inspect', methods=['GET'])
-def queue_inspect():
-    """
-    Retrieves all queue items without removing them from the queue and returns them as a dict.
-    :return: (dict) formatted
-    """
-    queue_items = atc.queue_inspect()
-    retdict = {}
-    for number, item in enumerate(queue_items):
-        serialized_task = item.json()
-        retdict['task_'+str(number)] = serialized_task
-    return retdict
-
-
-@app.route('/put', methods=['POST'])
-def queue_put():
-    """
-    POST request function that puts one task onto the autocontrol priorty queue.
-
-    The POST data must contain the following data fields:
-    'task':  (task.Task) The task.
-
-    The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
-    The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
-    sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
-    tasks. Sample numbers are derived from the sample_id upon first submission
-
-    :return: Status string.
-    """
-    retdict = {}
-    if request.method != 'POST':
-        abort(400, description='Request method is not POST.')
-
-    data = request.get_json()
-    if data is None or not isinstance(data, dict):
-        abort(400, description='No valid data received.')
-
-    # de-serialize the task data into a Task object
-    try:
-        task = Task(**data)
-        # put request in autocontrol queue
-        success, task_id, sample_number, response = atc.queue_put(task=task)
-        retdict['task_id'] = task_id
-        retdict['sample_number'] = sample_number
-        retdict['response'] = response
-    except ValidationError:
-        abort(400, description='Failed to deserialize task.')
-
-    if not success:
-        abort(400, description=response)
-
-    return retdict
-
-
 @app.route('/pause', methods=['POST'])
 def pause():
     """
@@ -318,4 +231,149 @@ def stop_server():
         print('Shutting down server after waiting for queue to empty.')
         response = shutdown_server(wait_for_queue_to_empty=data['wait_for_queue_to_empty'])
     return response
+
+
+@app.route('/cancel', methods=['POST'])
+def task_cancel():
+    """
+    POST request to cancel a submitted task from the autocontrol priority queue.
+
+    The POST data must contain the following data fields:
+    'task_id' - the id of the task to cancel as a str
+
+    :return: status string
+    """
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    data = request.get_json()
+    if data is None or not isinstance(data, dict):
+        abort(400, description='No valid data received.')
+
+    if 'task_id' not in data:
+        abort(400, description='No task id provided.')
+
+    if 'include_active_queue' in data and data['include_active_queue']:
+        if 'drop_material' in data and data['drop_material']:
+            drop_material = True
+        else:
+            drop_material = False
+        atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
+    else:
+        # submit autocontral cancel request
+        atc.queue_cancel(task_id=data['task_id'])
+
+    return 'Success.'
+
+
+@app.route('/put', methods=['POST'])
+def task_put():
+    """
+    POST request function that puts one task onto the autocontrol priorty queue.
+
+    The POST data must contain the following data fields:
+    'task':  (task.Task) The task.
+
+    The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
+    The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
+    sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
+    tasks. Sample numbers are derived from the sample_id upon first submission
+
+    :return: Dictionary with status, sample number and task id entries.
+    """
+    retdict = {}
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    data = request.get_json()
+    if data is None or not isinstance(data, dict):
+        abort(400, description='No valid data received.')
+
+    # de-serialize the task data into a Task object
+    try:
+        task = Task(**data)
+    except ValidationError:
+        abort(400, description='Failed to deserialize task.')
+
+    # put request in autocontrol queue
+    success, task_id, sample_number, response = atc.queue_put(task=task)
+    retdict['task_id'] = task_id
+    retdict['sample_number'] = sample_number
+    retdict['response'] = response
+
+    if not success:
+        abort(400, description=response)
+
+    return retdict
+
+
+@app.route('/resubmit', methods=['POST'])
+def task_resubmit():
+    """
+    POST request function that resubmits a task from the autocontrol activity queue.
+    :return: Status String
+    """
+    retdict = {}
+    if request.method != 'POST':
+        abort(400, description='Request method is not POST.')
+
+    data = request.get_json()
+    if data is None or not isinstance(data, dict):
+        abort(400, description='No valid data received.')
+
+    if 'task_id' not in data:
+        abort(400, description='No task id provided for original task.')
+
+    if 'task' in data:
+        try:
+            task = Task(**data['task'])
+        except ValidationError:
+            abort(400, description='Failed to deserialize task.')
+    else:
+        task = None
+
+    atc_was_paused = atc.paused
+
+    # pause priority queue execution
+    if not atc_was_paused:
+        atc.paused = True
+
+    old_task = atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=False)
+    if old_task is None:
+        abort(400, description='No task for resubmission found.')
+
+    # make sure the resubmitted task has the same priority
+    # channel information will not be copied from the old task and rather newly determined
+    # the task ID of a new task is not changed, and therefore, could be different from the old task
+    if task is not None:
+        task.priority = old_task.priority
+    else:
+        # only sample_id given old task will be resubmitted as is
+        task = old_task
+
+    # resubmit the task
+    success, task_id, sample_number, response = atc.queue_put(task=task)
+    retdict['task_id'] = task_id
+    retdict['sample_number'] = sample_number
+    retdict['response'] = response
+
+    # restart queue if it was not paused before
+    if not atc_was_paused:
+        atc.paused = False
+
+    return retdict
+
+
+@app.route('/queue_inspect', methods=['GET'])
+def queue_inspect():
+    """
+    Retrieves all queue items without removing them from the queue and returns them as a dict.
+    :return: (dict) formatted
+    """
+    queue_items = atc.queue_inspect()
+    retdict = {}
+    for number, item in enumerate(queue_items):
+        serialized_task = item.json()
+        retdict['task_'+str(number)] = serialized_task
+    return retdict
 

@@ -651,10 +651,14 @@ class autocontrol:
         :param task_id: the task id as a string or UUID
         :param include_active_queue: (bool) whether to delete the task from the active queue
         :param drop_material: (bool) whether to delete the material from atc memory
-        :return: no return value
+        :return: returns the cancelled task
         """
 
-        self.queue.remove(task_id)
+        task = self.queue.get_task_by_id(task_id)
+        if task is not None:
+            self.queue.remove(task_id)
+            return task
+
         if include_active_queue:
             task = self.active_tasks.get_task_by_id(task_id)
             self.active_tasks.remove(task_id)
@@ -667,6 +671,8 @@ class autocontrol:
                             if self.channel_po[device_name][subtask.channel] is not None:
                                 if self.channel_po[device_name][subtask.channel].id == task_id:
                                     self.channel_po[device_name][subtask.channel] = None
+
+        return task
 
     def queue_execute_one_item(self):
         """
