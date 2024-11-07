@@ -23,7 +23,7 @@ def cancel_task(task_id, url=None, port=None):
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, headers=headers, data=json.dumps(data))
 
-    return response
+    return response.json()
 
 
 def pause_queue(url=None, port=None):
@@ -37,6 +37,33 @@ def pause_queue(url=None, port=None):
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, headers=headers)
     return response
+
+
+def resubmit_task(task_id=None, task=None, url=None, port=None):
+    """
+    Resubmits a task either from the priority or active queue to the priority queue with the task ID as provided in the
+    task_id argument. When providing a task object, it will replace the original one except for the task priority.
+    :param task_id: (UUID or str) The ID of the task to resubmit.
+    :param task: (Task), optional, The task replacing the original task.
+    :param url: (str) The URL of the flask server running autocontrol. Default is 'http://localhost:'
+    :param port: (int) The port of the flask server running autocontrol.
+
+    :return: A dictionary containing the submission response, task id and sample id.
+    """
+    if url is None:
+        url = url = 'http://localhost:'
+    if port is None:
+        url = url + '/resubmit'
+    else:
+        url = url + str(port) + '/resubmit'
+
+    data = {'task_id': task_id}
+    if task is not None:
+        data['task'] = task.json()
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+
+    return response.json()
 
 
 def resume_queue(url=None, port=None):
@@ -133,7 +160,7 @@ def submit_task(task, port):
     data = task.json()
     response = requests.post(url, headers=headers, data=data)
     print(response, response.text)
-    return response
+    return response.json()
 
 
 def terminate_processes():

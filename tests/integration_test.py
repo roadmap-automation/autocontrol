@@ -95,13 +95,18 @@ def integration_test():
     measure_task_response_3 = submit_sample_block(qcmd_channel=1)
 
     autocontrol.support.pause_queue(port=port)
-    _ = input("Paused queue execution. Please press enter to continue cancelling the last measurement task.")
+    _ = input("Paused queue execution. Please press enter to continue cancelling measurement task 3.")
 
-    task_id = measure_task_response_3.json()['task_id']
+    task_id = measure_task_response_3['task_id']
     response = autocontrol.support.cancel_task(task_id, port=port)
-    print(response.json())
+    print(response)
 
-    _ = input("Task Cancelled. Please press enter to continue queue execution.")
+    _ = input("Task Cancelled. Please press enter to continue with a resubmission of measurement task 2.")
+    task_id = measure_task_response_2['task_id']
+    response = autocontrol.support.resubmit_task(task_id=task_id, port=port)
+    print(response)
+
+    _ = input("Task Resubmitted. Please press enter to continue queue execution.")
     autocontrol.support.resume_queue(port=port)
 
     # Wait for user input

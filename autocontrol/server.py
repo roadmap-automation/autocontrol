@@ -258,12 +258,14 @@ def task_cancel():
             drop_material = True
         else:
             drop_material = False
-        atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
+        task = atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
     else:
         # submit autocontral cancel request
-        atc.queue_cancel(task_id=data['task_id'])
+        task = atc.queue_cancel(task_id=data['task_id'])
 
-    return {'response': 'Success.'}
+    retdict = {'task': task.json(), 'response': 'Success.'}
+
+    return retdict
 
 
 @app.route('/put', methods=['POST'])
@@ -281,7 +283,6 @@ def task_put():
 
     :return: Dictionary with status, sample number and task id entries.
     """
-    retdict = {}
     if request.method != 'POST':
         abort(400, description='Request method is not POST.')
 
@@ -297,6 +298,7 @@ def task_put():
 
     # put request in autocontrol queue
     success, task_id, sample_number, response = atc.queue_put(task=task)
+    retdict = {}
     retdict['task_id'] = task_id
     retdict['sample_number'] = sample_number
     retdict['response'] = response
