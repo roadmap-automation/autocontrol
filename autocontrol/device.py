@@ -163,7 +163,7 @@ class Device(object):
     def prepare(self, subtask):
         return self.standard_task(subtask)
 
-    def read(self, channel=None):
+    def read(self, channel=None, subtask_id=None):
         """
         If a device has no read function, this method provides compatibility to submit measurement methods that
         will yield an empty readout. Thereby, processing steps or wait steps on a per-channel basis can be implemented.

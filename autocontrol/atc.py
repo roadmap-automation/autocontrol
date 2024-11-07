@@ -571,33 +571,29 @@ class autocontrol:
         success = True
         device = self.get_device_object(task.tasks[0].device)
 
+        # previous check_task call has already established that device communication works
+        # no need to recheck here
+
+        # read task completion data from devices associated with all subtasks
+        # this can be metadata, measurement data, or anything else
+        for subtask in task.tasks:
+            read_status, data = device.read(channel=task.tasks[0].channel, subtask_id=subtask.id)
+            if read_status != Status.SUCCESS:
+                response = 'Failure reading task execution data from device {}.'.format(task.tasks[0].device)
+                task.md['execution_response'] = response
+                self.active_tasks.replace(task, task.id)
+                return False
+
+            # append data to subtask
+            subtask.md['task_execution_data'] = data
+
+        # now do task-level post-processing
         if task.task_type == TaskType.INIT:
             # create an empty channel physical occupancy entry for the device (False == not occupied)
             noc = device.number_of_channels
             self.channel_po[task.tasks[0].device] = [None] * noc
 
         elif task.task_type == TaskType.MEASURE:
-            # get measurment data
-            request_status, device_status = device.get_device_status()
-            if request_status != Status.SUCCESS:
-                response = 'Cannot get status from device {}. Cannot read out data'.format(task.tasks[0].device)
-                task.md['execution_response'] = response
-                self.active_tasks.replace(task, task.id)
-                return False
-            if device_status != Status.IDLE and device_status != Status.UP:
-                response = 'Device {} busy or down. Cannot read out data.'.format(task.tasks[0].device)
-                task.md['execution_response'] = response
-                self.active_tasks.replace(task, task.id)
-                return False
-            read_status, data = device.read(channel=task.tasks[0].channel)
-            if read_status != Status.SUCCESS:
-                response = 'Failure reading measurement data from device {}.'.format(task.tasks[0].device)
-                task.md['execution_response'] = response
-                self.active_tasks.replace(task, task.id)
-                return False
-
-            # append data to task
-            task.tasks[0].md['measurement_data'] = data
             # append task id associated with measurement material to current measurement task
             task.task_history.append(self.channel_po[task.tasks[0].device][task.tasks[0].channel].id)
             # Attach measurement task to the physical occupancy list
@@ -648,14 +644,29 @@ class autocontrol:
                     serialized[key] = [obj.json() for obj in serialized[key] if obj is not None]
             json.dump(serialized, f, indent=4)
 
-    def queue_cancel(self, task_id):
+    def queue_cancel(self, task_id, include_active_queue=False, drop_material=False):
         """
-        Cancels a task in the queue. The method does not test whether the task exists prior to cancelling.
+        Cancels a task in the priority or active queue. The method does not test whether the task exists prior
+        to cancelling. Optionally the task associated material is deleted from atc memory.
         :param task_id: the task id as a string or UUID
+        :param include_active_queue: (bool) whether to delete the task from the active queue
+        :param drop_material: (bool) whether to delete the material from atc memory
         :return: no return value
         """
 
         self.queue.remove(task_id)
+        if include_active_queue:
+            task = self.active_tasks.get_task_by_id(task_id)
+            self.active_tasks.remove(task_id)
+            if drop_material:
+                # delete task from cpo dictionary
+                device_name = task.device
+                for subtask in task.tasks:
+                    if subtask.channel is not None:
+                        if subtask.channel in self.channel_po[device_name]:
+                            if self.channel_po[device_name][subtask.channel] is not None:
+                                if self.channel_po[device_name][subtask.channel].id == task_id:
+                                    self.channel_po[device_name][subtask.channel] = None
 
     def queue_execute_one_item(self):
         """

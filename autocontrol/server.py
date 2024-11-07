@@ -116,15 +116,20 @@ def queue_cancel():
     if data is None or not isinstance(data, dict):
         abort(400, description='No valid data received.')
 
-    # de-serialize the POST data into a Task object
-    if 'task_id' in data:
-        # submit autocontral cancel request
-        atc.queue_cancel(task_id=data['task_id'])
-        description='Success.'
-    else:
+    if 'task_id' not in data:
         abort(400, description='No task id provided.')
 
-    return description
+    if 'include_active_queue' in data and data['include_active_queue']:
+        if 'drop_material' in data and data['drop_material']:
+            drop_material = True
+        else:
+            drop_material = False
+        atc.queue.cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
+    else:
+        # submit autocontral cancel request
+        atc.queue_cancel(task_id=data['task_id'])
+
+    return 'Success.'
 
 
 @app.route('/queue_inspect', methods=['GET'])
