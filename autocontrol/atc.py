@@ -664,8 +664,8 @@ class autocontrol:
             self.active_tasks.remove(task_id=task_id)
             if drop_material:
                 # delete task from cpo dictionary
-                device_name = task.device
                 for subtask in task.tasks:
+                    device_name = subtask.device
                     if subtask.channel is not None:
                         if subtask.channel in self.channel_po[device_name]:
                             if self.channel_po[device_name][subtask.channel] is not None:
