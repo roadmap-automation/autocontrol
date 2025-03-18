@@ -1,6 +1,7 @@
 import autocontrol.status
 from autocontrol.task_struct import TaskType
 from autocontrol.status import Status
+from urllib.parse import urljoin
 import requests
 import time as ttime
 
@@ -33,7 +34,7 @@ class Device(object):
         if self.address is None:
             return Status.INVALID, 'No address for device.'
 
-        url = self.address + command
+        url = urljoin(self.address, command)
         headers = {'Content-Type': 'application/json'}
 
         try:
