@@ -19,9 +19,9 @@ class open_QCMD(Device):
         self.channel_mode = subtask.channel_mode
 
         # injection devices have two hard-coded channels
-        if subtask.number_of_channels is not None and subtask.number_of_channels != 2:
-            return Status.INVALID, 'Number of channels must be 2 for a qcmd device.'
-        self.number_of_channels = subtask.number_of_channels if subtask.number_of_channels is not None else 2
+        if subtask.number_of_channels is not None and subtask.number_of_channels != 3:
+            return Status.INVALID, 'Number of channels must be 3 for a qcmd device.'
+        self.number_of_channels = subtask.number_of_channels if subtask.number_of_channels is not None else 3
 
         return Status.SUCCESS, 'Qcmd device initialized.'
 

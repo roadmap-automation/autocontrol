@@ -10,9 +10,10 @@ from autocontrol.task_struct import Task
 from autocontrol.status import Status
 
 # device imports
-from autocontrol.device_injection import injection_device
+from autocontrol.device_injection import injection_device, distribution_device
 from autocontrol.device_liquid_handler import lh_device
 from autocontrol.device_qcmd import open_QCMD
+from autocontrol.device_rinse import rinse_device
 
 
 def generate_new_dict_key(base_key, dictionary):
@@ -276,6 +277,10 @@ class autocontrol:
             device_object = lh_device(name=device_name, address=device_address, simulated=simulated)
         elif device_type == 'qcmd' or device_type == 'QCMD':
             device_object = open_QCMD(name=device_name, address=device_address, simulated=simulated)
+        elif device_type == 'rinse' or device_type == 'RINSE':
+            device_object = rinse_device(name=device_name, address=device_address, simulated=simulated)            
+        elif device_type == 'distribution' or device_type == 'DISTRIBUTION':
+            device_object = distribution_device(name=device_name, address=device_address, simulated=simulated)            
         else:
             return reterror(False, subtask, 0, task, 'Unknown device.')
 
