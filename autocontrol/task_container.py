@@ -365,7 +365,7 @@ class TaskContainer:
         cursor = conn.cursor()
 
         # serialize the entire object and save it extracting some parameters of immediate interest to autocontrol
-        serialized_task = task.json()
+        serialized_task = task.model_dump_json(indent=2)
 
         # The target channel and device are endpoints of a multistep transfer. Autocontrol is not currently not
         # concerned with assigning channels for intermediate devices.
