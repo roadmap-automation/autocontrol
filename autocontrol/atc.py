@@ -667,7 +667,7 @@ class autocontrol:
         if include_active_queue:
             task = self.active_tasks.get_task_by_id(task_id)
             self.active_tasks.remove(task_id=task_id)
-            if drop_material:
+            if drop_material & (task is not None):
                 # delete task from cpo dictionary
                 for subtask in task.tasks:
                     device_name = subtask.device
