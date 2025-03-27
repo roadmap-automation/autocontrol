@@ -263,7 +263,10 @@ def task_cancel():
         # submit autocontral cancel request
         task = atc.queue_cancel(task_id=data['task_id'])
 
-    retdict = {'task': task.json(), 'response': 'Success.'}
+    if task is not None:
+        retdict = {'task': task.json(), 'response': 'Success.'}
+    else:
+        retdict = {'task': None, 'response': 'Task not found'}
 
     return retdict
 
