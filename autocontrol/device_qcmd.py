@@ -60,7 +60,17 @@ class open_QCMD(Device):
             }
             return Status.SUCCESS, ddict
 
-        return super().read(channel, subtask_id)
+        status, ret = self.communicate('/GetTaskData', method='GET', data=json.dumps(dict(task_id=subtask_id, channel=channel)))
+        if status == Status.SUCCESS:
+            try:
+                retdict = json.loads(ret)
+            except json.JSONDecodeError:
+                status = Status.ERROR
+                retdict = None
+        else:
+            retdict = None
+
+        return status, retdict
 
     def standard_task(self, subtask, endpoint='/SubmitTask'):
         return super().standard_task(subtask, endpoint)
