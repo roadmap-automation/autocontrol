@@ -583,7 +583,7 @@ class autocontrol:
         # this can be metadata, measurement data, or anything else
         for subtask in task.tasks:
             read_status, data = device.read(channel=task.tasks[0].channel, subtask_id=subtask.id)
-            if read_status != Status.SUCCESS:
+            if (read_status != Status.SUCCESS) & (task.task_type != TaskType.INIT):
                 response = 'Failure reading task execution data from device {}.'.format(task.tasks[0].device)
                 task.md['execution_response'] = response
                 self.active_tasks.replace(task, task.id)
