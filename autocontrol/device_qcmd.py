@@ -60,7 +60,7 @@ class open_QCMD(Device):
             }
             return Status.SUCCESS, ddict
 
-        status, ret = self.communicate('/GetTaskData', method='GET', data=json.dumps(dict(task_id=subtask_id, channel=channel)))
+        status, ret = self.communicate('/GetTaskData', method='GET', data=json.dumps(dict(task_id=str(subtask_id), channel=channel)))
         if status == Status.SUCCESS:
             try:
                 retdict = json.loads(ret)
