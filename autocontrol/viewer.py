@@ -38,10 +38,10 @@ if 'poll_counter' not in st.session_state:
 def click_pause_button():
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
-        url = st.session_state.atc_address + '/pause'
+        url = st.session_state.atc_address # + '/pause'
         response = autocontrol.support.pause_queue(url=url)
     else:
-        url = st.session_state.atc_address + '/resume'
+        url = st.session_state.atc_address # + '/resume'
         response = autocontrol.support.resume_queue(url=url)
 
     if response.status_code == 200:
