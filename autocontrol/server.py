@@ -107,9 +107,6 @@ def get_subtask_results(task_id, subtask_id):
     if task is None:
         abort(400, description="Task is not found or not yet complete.")
 
-    print(task)
-    print(list(subtask.id for subtask in task.tasks))
-
     subtask = next((s for s in task.tasks if str(s.id) == subtask_id), None)
 
     if subtask is None:
