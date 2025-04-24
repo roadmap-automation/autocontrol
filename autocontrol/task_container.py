@@ -49,7 +49,7 @@ class TaskContainer:
 
         create_table_sql = """
             CREATE TABLE IF NOT EXISTS task_table (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT,
                 sample_id TEXT,
                 priority REAL,

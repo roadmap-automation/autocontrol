@@ -159,7 +159,7 @@ def file_mod_time(storage_path):
 def load_all(storage_path):
     priority_queue = load_sql('priority_queue', storage_path)
     active_queue = load_sql('active_queue', storage_path)
-    history_queue = load_sql('history_queue', storage_path)
+    history_queue = load_sql('history_queue', storage_path, entry_limit=50)
     channel_po = load_json_task_list('channel_po', storage_path)
 
     td_frames = []
@@ -178,14 +178,17 @@ def load_all(storage_path):
     return priority_queue, active_queue, history_queue, channel_po, edges
 
 
-def load_sql(filename, storage_path):
+def load_sql(filename, storage_path, entry_limit=None):
     # load status from SQLlite databases
     localhost = "sqlite:///"
     absolute_path = os.path.abspath(os.path.join(storage_path, filename+'.sqlite3'))
     url = localhost + absolute_path
     conn = st.connection(filename, type='sql', url=url)
     try:
-        df = conn.query("SELECT * FROM task_table", ttl=5)
+        if entry_limit is None:
+            df = conn.query("SELECT * FROM task_table", ttl=5)
+        else:
+            df = conn.query("SELECT * FROM task_table ORDER BY id DESC LIMIT {lim}".format(lim=entry_limit), ttl=5)
     except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         st.info(f"Database error: {e}")
         df = pd.DataFrame()
@@ -366,7 +369,7 @@ def main(storage_path=None, atc_address=None):
     st.text('Active Jobs:')
     st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, use_container_width=True,
                  hide_index=True)
-    st.text('Finished Jobs:')
+    st.text('Finished Jobs (limited to the last 50):')
     st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, use_container_width=True,
                  hide_index=True)
 
