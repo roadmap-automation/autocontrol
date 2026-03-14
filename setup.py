@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='autocontrol',
     version='0.1',
-    packages=['autocontrol'],
+    packages=['autocontrol', 'autocontrol/support', 'autocontrol/streamlit'],
     url='https://github.com/criosx/autocontrol',
     license='MIT License',
     author='Frank Heinrich',

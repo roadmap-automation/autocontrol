@@ -2,6 +2,7 @@ import autocontrol.server as server
 import json
 import multiprocessing
 import os
+from pathlib import Path
 import platform
 import psutil
 import requests
@@ -80,9 +81,9 @@ def resume_queue(url=None, port=None):
 
 
 def start_streamlit_viewer(storage_path, server_address, server_port):
-    viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
+    viewer_path = Path(__file__).parent / 'streamlit' / 'viewer.py'
     server_addr = server_address + ':' + str(server_port)
-    _ = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path, '--atc_address',
+    _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--storage_dir', storage_path, '--atc_address',
                         server_addr],)
 
 

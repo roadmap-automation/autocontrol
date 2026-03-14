@@ -1,7 +1,6 @@
 import autocontrol.task_struct as tsk
-import autocontrol.support
+import support
 import os
-import time as ttime
 import uuid
 
 port = 5014
@@ -15,7 +14,7 @@ def live_test():
     storage_path = os.path.join(cfd, '..', 'test_storage')
 
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
-    autocontrol.support.start(portnumber=port, storage_path=storage_path)
+    support.start(portnumber=port, storage_path=storage_path)
 
     # ----------- Submitting tasks ---------------------------
     task = tsk.Task(
@@ -29,7 +28,7 @@ def live_test():
             md={'description': 'injection device init'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     sample_id1 = uuid.uuid4()
     task_id1 = uuid.uuid4()
@@ -43,7 +42,7 @@ def live_test():
             md={'description': 'dummy prepare sleep'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     sample_id2 = uuid.uuid4()
     task = tsk.Task(
@@ -55,7 +54,7 @@ def live_test():
             md={'description': 'dummy prepare sleep'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id1,
@@ -66,7 +65,7 @@ def live_test():
             md={'description': 'dummy sleep'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id2,
@@ -77,17 +76,17 @@ def live_test():
             md={'description': 'dummy sleep'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     # Wait for user input
     _ = input("Please enter some text and press Enter to stop all processes: ")
 
     # ------------------ Stopping Flask Server ----------------------------------
-    autocontrol.support.stop(portnumber=port)
+    support.stop(portnumber=port)
     print('Integration test done.')
     print('Program exit.')
 
 
 if __name__ == '__main__':
     live_test()
-    autocontrol.support.terminate_processes()
+    support.terminate_processes()
