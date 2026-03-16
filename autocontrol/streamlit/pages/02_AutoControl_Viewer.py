@@ -10,17 +10,22 @@ import pandas as pd
 import requests
 import sqlite3
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import uuid
 
 st.set_page_config(layout="wide")
 
+if not st.session_state["data_folders_ready"]:
+    st.info("Files and Folders not set up. Please visit the File System tab.")
+    st.stop()
+
 def click_pause_button():
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
-        url = st.session_state.atc_address # + '/pause'
+        url = st.session_state.cfg.atc_address # + '/pause'
         response = support.pause_queue(url=url)
     else:
-        url = st.session_state.atc_address # + '/resume'
+        url = st.session_state.cfg.atc_address # + '/resume'
         response = support.resume_queue(url=url)
 
     if response.status_code == 200:
@@ -31,7 +36,7 @@ def click_reset_button():
     if not st.session_state.reset_all:
         st.session_state.reset_all = True
     else:
-        url = st.session_state.atc_address + '/reset'
+        url = st.session_state.cfg.atc_address + '/reset'
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers)
         if response.status_code == 200:
@@ -42,7 +47,7 @@ def click_restart_button():
     if not st.session_state.restart_all:
         st.session_state.restart_all = True
     else:
-        url = st.session_state.atc_address + '/restart'
+        url = st.session_state.cfg.atc_address + '/restart'
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers)
         if response.status_code == 200:
@@ -293,16 +298,15 @@ def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifi
 
 # ---------------------------------------------------------------------------------------------------------------------
 # --------------------------------------------- Streamlit Page Start --------------------------------------------------
+count = st_autorefresh(interval=5000, limit=None, key='pcounter')
 
-
-
-count = st_autorefresh(interval=5000, limit=None, key="pcounter")
+storage_path = st.session_state.cfg.autocontrol_dir
+identifier_list = []
 
 fmt = file_mod_time(storage_path)
 if st.session_state.file_mod_time is None or st.session_state.file_mod_time != fmt:
     st.session_state.file_mod_time = fmt
     get_new_data(storage_path=storage_path, identifier_list=identifier_list)
-
 
 priority_queue = st.session_state.priority_queue
 active_queue = st.session_state.active_queue
@@ -338,13 +342,13 @@ co_conf_activity = co_conf | {"status": st.column_config.TextColumn("execution s
 co_conf_history = co_conf | {"status": None}
 
 st.text('Queued Jobs:')
-st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority, use_container_width=True,
+st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority, width='stretch',
              hide_index=True)
 st.text('Active Jobs:')
-st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, use_container_width=True,
+st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, width='stretch',
              hide_index=True)
 st.text('Finished Jobs (limited to the last 50):')
-st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, use_container_width=True,
+st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, width='stretch',
              hide_index=True)
 
 if st.session_state.poll_counter is None or st.session_state.poll_counter != count:

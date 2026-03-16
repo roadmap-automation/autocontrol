@@ -40,9 +40,13 @@ class DataConfig:
     GIN_user: str = 'fhein'
     SSH_host_alias: str = 'gin.g-node.org'
 
+    # autocontrol-specific fields
+    autocontrol_dir: Optional[str] = None
+    atc_address: Optional[str] = None
+
 def default_config_path() -> Path:
     # env override
-    override = os.getenv("SANS_APP_CONFIG")
+    override = os.getenv("AUTOCONTROL_APP_CONFIG")
     if override:
         return Path(override).expanduser()
     if user_config_dir is not None:
@@ -74,7 +78,7 @@ def load_persistent_cfg() -> DataConfig:
     return DataConfig(**filtered)
 
 
-def save_persistent_cfg(data: DataConfig | dict) -> None:
+def save_persistent_cfg(data: DataConfig) -> None:
     cfg_path = default_config_path()
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 

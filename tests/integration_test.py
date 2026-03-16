@@ -1,5 +1,5 @@
 import autocontrol.task_struct as tsk
-import support
+from autocontrol.support import support
 import os
 import time
 import uuid

@@ -30,6 +30,15 @@ def file_browser_button(path: Path, label="↗️"):
         if st.button(label, help=f"Open {path}"):
             open_in_file_browser(path)
 
+# TODO: Block UI access when autocontrol server is running
+
+if st.session_state.storage_path_overwrite:
+    st.info(f"Autocontrol storage path has been overwritten at startup to '{st.session_state.cfg.autocontrol_dir}'. "
+            f"Datamanager's Datalad and remote storage capabilities are not available. Start autocontrol with "
+            f"storage_path=None to use the datamanager or provide a storage path that lies within a Datalad "
+            f"repository.")
+    st.stop()
+
 cfg = st.session_state.cfg
 
 st.write("""
@@ -39,7 +48,7 @@ st.write("""
 
 user_list = []
 default_user = None
-root = st.session_state.app_dir
+root = st.session_state.user_root_dir
 if root.is_dir():
     user_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
     user_list.sort()
@@ -63,7 +72,7 @@ if user and user != st.session_state.cfg.user_name:
 if st.session_state.cfg.user_name is None:
     st.stop()
 
-st.session_state.dataroot_dir = st.session_state.app_dir / cfg.user_name
+st.session_state.dataroot_dir = st.session_state.user_root_dir / cfg.user_name
 
 col1, col2, col3 = st.columns([6, 1, 3])
 info_text = "Data root directory " + str(st.session_state.dataroot_dir)
@@ -107,6 +116,7 @@ project = st.selectbox(
 if project and project != st.session_state.cfg.project:
     st.session_state.cfg.project = project
     configuration.save_persistent_cfg(st.session_state.cfg)
+    app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
 if st.session_state.cfg.project is None:
     st.stop()
 
@@ -130,6 +140,7 @@ campaign = st.selectbox(
 if campaign and campaign != st.session_state.cfg.campaign:
     st.session_state.cfg.campaign = campaign
     configuration.save_persistent_cfg(st.session_state.cfg)
+    app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
 if st.session_state.cfg.campaign is None:
     st.stop()
 
@@ -153,6 +164,7 @@ experiment = st.selectbox(
 if experiment and experiment != st.session_state.cfg.experiment:
     st.session_state.cfg.experiment = experiment
     configuration.save_persistent_cfg(st.session_state.cfg)
+    app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
 if st.session_state.cfg.experiment is None:
     st.stop()
 
@@ -176,6 +188,17 @@ else:
             app_functions.setup_app_dirs(create_dirs=True)
             st.rerun()
     st.stop()
+
+st.write("""
+## Storage Directory
+""")
+col7, col8 = st.columns([7, 3])
+with col7:
+    st.info(f"Autocontrol storage directory: {st.session_state.cfg.autocontrol_dir}")
+with col8:
+    if st.button("Reset to Default"):
+        st.session_state.cfg.autocontrol_dir = exp_dir / 'autocontrol'
+        configuration.save_persistent_cfg(st.session_state.cfg)
 
 st.write("""
 ## DataLad
@@ -204,11 +227,11 @@ _, e_installed, e_status = dm.get_status(dataset=exp_dir, recursive=False)
 ds_installed = r_installed and p_installed and c_installed and e_installed
 
 #all dirs exists at this point in the script as checked above
-col5, col6 = st.columns([7, 3])
+col9, col10 = st.columns([7, 3])
 if not ds_installed:
-    with col5:
+    with col9:
         st.info('DataLad branch (project / campaign / experiment) is not (fully) initialized.')
-    with col6:
+    with col10:
         if st.button("Initialize DataLad Tree.", type='primary'):
             # ensure that data structure is a datalad tree
             dm.init_tree(project=cfg.project, campaign=cfg.campaign, experiment=cfg.experiment, force=True)
@@ -312,10 +335,10 @@ with st.expander(label='Connection Setup', expanded=False):
                 st.error(message)
         st.stop()
 
-    col7, col8, col9 = st.columns([3, 4, 3])
-    with col7:
+    col11, col12, col13 = st.columns([3, 4, 3])
+    with col11:
         file_browser_button(public_key_path.parent, label="Show SSH Directory ↗️")
-    with col8:
+    with col12:
         if st.button("Test SSH Connection", type='primary'):
             ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
             if ok:
@@ -406,13 +429,13 @@ with st.expander(label='Repository Actions', expanded=True):
             st.rerun()
     elif state == 'diverged':
         st.warning("Local branch and remote are diverged. Feel free to sync manually.")
-        col10, col11 = st.columns([5, 5])
-        with col10:
+        col14, col15 = st.columns([5, 5])
+        with col14:
             if st.button('Update local branch from remote.', type='primary'):
                 dm.pull_from_remotes(dataset=exp_dir, recursive=True)
                 dm.get_content(dataset=exp_dir, recursive=True)
                 st.rerun()
-        with col11:
+        with col15:
             if st.button('Push local branch to remote.', type='primary'):
                 dm.push_to_remotes(dataset=exp_dir, recursive=True, push_annex_data=True)
                 st.rerun()

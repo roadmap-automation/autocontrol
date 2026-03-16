@@ -10,25 +10,28 @@ from autocontrol.support import configuration
 
 
 def setup_app_dirs(
+        user_root_dir: str | Path = None,
         create_dirs=False,
         init_datalad=False):
     """
     Sets up directories for app use. Initializes the datamanager.
+    :param user_root_dir: (bool) root dir path under which user (root) datamanager datasets will be situated
     :param create_dirs: (bool) whether to create directories if they do not exist
     :param init_datalad: (bool) whether to initialize the DataLad repo in the app dir tree
     :return:
     """
     # check if canonical app working directories exist
-    app_dir = Path.home() / "app_data" / "autocontrol"
-    app_dir.mkdir(parents=True, exist_ok=True)
-    st.session_state['app_dir'] = app_dir
+    if user_root_dir is None:
+        user_root_dir = Path.home() / "app_data"
+    user_root_dir.mkdir(parents=True, exist_ok=True)
+    st.session_state['user_root_dir'] = user_root_dir
 
     # load config file from disc
     cfg = configuration.load_persistent_cfg()
     st.session_state["cfg"] = cfg
 
     # default data root based on username
-    dataroot_dir = app_dir / cfg.user_name
+    dataroot_dir = user_root_dir / cfg.user_name
     st.session_state['dataroot_dir'] = dataroot_dir
 
     if cfg.project is None or cfg.campaign is None or cfg.experiment is None:
@@ -44,11 +47,11 @@ def setup_app_dirs(
     dataroot_dir.mkdir(parents=True, exist_ok=True)
     exp_root.mkdir(parents=True, exist_ok=True)
 
-    autocontrol_dir = exp_root / 'autocontol'
-    autocontrol_dir.mkdir(parents=True, exist_ok=True)
-
-    # save paths to persistent session state
-    st.session_state['autocontrol_dir'] = autocontrol_dir
+    if st.session_state.cfg.autocontrol_dir is None:
+        autocontrol_dir = exp_root / 'autocontrol'
+        autocontrol_dir.mkdir(parents=True, exist_ok=True)
+        # save paths to persistent session state
+        st.session_state.cfg.autocontrol_dir = autocontrol_dir
 
     if init_datalad:
         dm = datamanager.DataManager(

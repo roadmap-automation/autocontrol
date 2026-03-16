@@ -10,10 +10,10 @@ from autocontrol.task_struct import Task
 from autocontrol.status import Status
 
 # device imports
-from autocontrol.device_injection import injection_device, distribution_device
-from autocontrol.device_liquid_handler import lh_device
-from autocontrol.device_qcmd import open_QCMD
-from autocontrol.device_rinse import rinse_device
+from autocontrol.devices.device_injection import injection_device, distribution_device
+from autocontrol.devices.device_liquid_handler import lh_device
+from autocontrol.devices.device_qcmd import open_QCMD
+from autocontrol.devices.device_rinse import rinse_device
 
 
 def generate_new_dict_key(base_key, dictionary):
