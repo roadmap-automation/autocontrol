@@ -43,6 +43,7 @@ class DataConfig:
     # autocontrol-specific fields
     autocontrol_dir: Optional[str] = None
     atc_address: Optional[str] = None
+    autocontrol_startup: bool = False
 
 def default_config_path() -> Path:
     # env override

@@ -21,11 +21,8 @@ def main(storage_path=None, atc_address=None):
         st.session_state.storage_path_overwrite = False
         st.session_state.cfg.autocontrol_dir = None
         app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
-
-        if not st.session_state["data_folders_ready"]:
-            st.info("Files and Folders not set up. Please visit the File System tab.")
-            st.stop()
-
+        print("No storage path provided. Select experiment in the File System tab of the Streamlit App and "
+              "authorize the autocontrol server startup manually.")
         # storage path is contained in st.session_state.autocontrol_dir after setup_app_dirs()
         # storage_path = st.session_state.autocontrol_dir
     else:
@@ -38,20 +35,30 @@ def main(storage_path=None, atc_address=None):
             st.session_state.storage_path_overwrite = True
             st.session_state.cfg.autocontrol_dir = storage_path
             st.session_state.data_folders_ready = True
+            # authorize autocontrol server startup
+            st.session_state.cfg.autocontrol_startup = False
+            configuration.save_persistent_cfg(st.session_state.cfg)
         elif node_type in ['root', 'project', 'campaign', 'experiment']:
             print("WARNING: Storage path provided at startup is at a dataset level of a Datamanager Repository.")
-            print("File System Tab deactivated.")
+            print("The storage path should be at a below-experiment level. Datalad and Remote storage capabilities"
+                  "not available via the Streamlit App.")
             st.session_state.storage_path_overwrite = True
             st.session_state.cfg.autocontrol_dir = storage_path
             st.session_state.data_folders_ready = True
+            # authorize autocontrol server startup
+            st.session_state.cfg.autocontrol_startup = False
+            configuration.save_persistent_cfg(st.session_state.cfg)
         else:
             print("Storage path provided to autocontrol is within existing Datamanager Repository.")
-            print("File System Tab available. Updating autocontrol configuration with path information.")
+            print("Datalad and Remote storage capabilities available via the Streamlit App.")
             # initialize a datamanager instance just for bootstrapping, thereby updating the config
             _ = datamanager.DataManager(bootstrap_path = storage_path)
             st.session_state.storage_path_overwrite = False
             st.session_state.cfg.autocontrol_dir = storage_path
             app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
+            # authorize autocontrol server startup
+            st.session_state.cfg.autocontrol_startup = False
+            configuration.save_persistent_cfg(st.session_state.cfg)
 
     if 'pause_button' not in st.session_state:
         st.session_state.pause_button = False
