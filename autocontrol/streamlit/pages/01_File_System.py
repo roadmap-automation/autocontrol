@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import platform
 from pathlib import Path
 import shlex
 
 import streamlit as st
+
+from roadmap_datamanager import datamanager
+from roadmap_datamanager import datalad_gin_api as dgapi
+
 from autocontrol.support import configuration
 from autocontrol.support import app_functions
 
@@ -30,7 +35,82 @@ def file_browser_button(path: Path, label="↗️"):
         if st.button(label, help=f"Open {path}"):
             open_in_file_browser(path)
 
-# TODO: Block UI access when autocontrol server is running
+def start_server():
+    st.session_state.cfg.autocontrol_startup = False
+    Path(st.session_state.cfg.autocontrol_dir).mkdir(parents=True, exist_ok=True)
+    configuration.save_persistent_cfg(st.session_state.cfg)
+
+def UI_fragment_SSH_connection():
+    gin_user = st.text_input('GIN User', value=st.session_state.cfg.GIN_user)
+    if gin_user is not None and  gin_user != st.session_state.cfg.GIN_user:
+        st.session_state.cfg.GIN_user = gin_user
+        configuration.save_persistent_cfg(st.session_state.cfg)
+
+    ssh_hostname = st.text_input('GIN URL / SSH Host Name', value=st.session_state.cfg.GIN_url)
+    if ssh_hostname != st.session_state.cfg.GIN_url:
+        st.session_state.cfg.GIN_url = ssh_hostname
+        configuration.save_persistent_cfg(st.session_state.cfg)
+
+    ssh_host_alias = st.text_input('GIN / SSH Host Alias for .ssh/config', value=st.session_state.cfg.SSH_host_alias)
+    if ssh_host_alias != st.session_state.cfg.SSH_host_alias:
+        st.session_state.cfg.SSH_host_alias = ssh_host_alias
+        configuration.save_persistent_cfg(st.session_state.cfg)
+
+    st.text("We use SSH key authentication for communicating with GIN. This section will ensure the proper key setup.")
+
+    # GIN SSH UI section
+    ssh_host_alias_default = ssh_hostname
+    ssh_host_user = 'git' if ssh_hostname == 'gin.g-node.org' else gin_user
+
+    config_file = app_functions.ssh_config_path()
+    found, message = app_functions.ssh_config_has_entry(ssh_host_alias, ssh_hostname, ssh_host_user)
+
+    suggested_private_key = app_functions.ssh_default_key_path(ssh_hostname, ssh_host_user)
+    private_key_path = Path(suggested_private_key).expanduser()
+    public_key_path = private_key_path.with_suffix('.pub')
+
+    if found:
+        st.success(message)
+        if public_key_path.exists():
+            st.text(f"Here is the folder with you public key '{str(public_key_path.name)}' that should be provided to "
+                    f"your gin.g-node.org account.")
+        else:
+            st.text(f"Although an entry for the host and user was found in the SSH config file, no key was found under "
+                    f"the canonical name: '{str(public_key_path.name)}'. It might be missing or under a different name."
+                    f" Either regenerate a new key pair or provide the differently named key to gin.g-node.org. Inspect"
+                    f" or clean up .ssh/config for a coherent setup.")
+    else:
+        st.info(message)
+        if st.button("Create new SSH key pair."):
+
+
+            st.text("This creates an SSH ed25519 key pair locally. You can then copy the public key into your GIN "
+                    "account manually.")
+
+            comment = f"{ssh_host_user}@{ssh_hostname}"
+            success, message = app_functions.ssh_generate_keypair(private_key_path=private_key_path, comment=comment)
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
+        st.stop()
+
+    col11, col12, col13 = st.columns([3, 4, 3])
+    with col11:
+        file_browser_button(public_key_path.parent, label="Show SSH Directory ↗️")
+    with col12:
+        if st.button("Test SSH Connection", type='primary'):
+            ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
+            if ok:
+                st.success(summary)
+            else:
+                st.error(summary)
+            if details:
+                st.code(details)
+            st.caption(f"Command: {shlex.join(['ssh', '-T', '-o', 'BatchMode=yes', ssh_host_alias])}")
+
+            if not ok:
+                st.stop()
 
 if st.session_state.storage_path_overwrite:
     st.info(f"Autocontrol storage path has been overwritten at startup to '{st.session_state.cfg.autocontrol_dir}'. "
@@ -87,13 +167,38 @@ else:
         with col2:
             file_browser_button(st.session_state.dataroot_dir)
     else:
-        info_text += " has not been created, yet."
+        info_text += (" has not been created, yet. If you intend to use GIN remote storage, make sure that the SSH "
+                      "connection is working properly. The script will attempt to clone an existing repository for "
+                      "this user when creating a data root.")
+
         with col1:
             st.text(info_text)
         with col3:
             if st.button("Create Data Root Directory", type='primary'):
                 st.session_state.dataroot_dir.mkdir(parents=True, exist_ok=True)
+                # check SSH connection
+                ssh_host_alias = st.session_state.cfg.SSH_host_alias
+                ok = False
+                if ssh_host_alias is not None:
+                    ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
+                if not ok:
+                    st.warning("SSH connection failed.")
+                else:
+                    try:
+                        source_url = 'https://' + cfg.GIN_url + '/' + cfg.GIN_user + '/' + cfg.user_name
+                        dgapi.clone_from_remote(
+                            dest=st.session_state.dataroot_dir,
+                            user_name=cfg.GIN_user,
+                            repo_name=cfg.user_name
+                        )
+                    except Exception as e:
+                        st.info("No remote repository found.")
+                        st.text(f"Detailed response: {e}")
                 st.rerun()
+
+        st.write("""## Remote Connection Setup""")
+        UI_fragment_SSH_connection()
+        st.stop()
 
     st.write("""
         ## Project / Campaign / Experiment
@@ -193,19 +298,28 @@ else:
         st.stop()
 
 st.write("""
-## Storage Directory
+## Autocontrol Storage Directory
 """)
+exp_dir = root = st.session_state.dataroot_dir / st.session_state.cfg.project / st.session_state.cfg.campaign
+exp_dir = exp_dir / st.session_state.cfg.experiment
 col7, col8 = st.columns([7, 3])
 with col7:
-    st.info(f"Autocontrol storage directory: {st.session_state.cfg.autocontrol_dir}")
+    st.session_state.cfg.autocontrol_dir = str(exp_dir / 'autocontrol')
+    st.success(f"Autocontrol storage directory: {st.session_state.cfg.autocontrol_dir}")
 with col8:
     if cfg.autocontrol_startup:
-        if st.button("Reset to Default"):
-            st.session_state.cfg.autocontrol_dir = exp_dir / 'autocontrol'
-            configuration.save_persistent_cfg(st.session_state.cfg)
+        st.button("Authorize Autocontrol Server Startup", type='primary', on_click=start_server)
     else:
-        file_browser_button(st.session_state.cfg.autocontrol_dir)
+        file_browser_button(Path(st.session_state.cfg.autocontrol_dir))
 
+if (exp_dir / 'autocontrol').is_dir():
+    st.text("The autocontrol storage folder is not archived due to frequent in-place modification. ")
+    if st.button("Make an archived copy of the storage directory"):
+        archive_dir = exp_dir / "autocontrol_archive"
+        if archive_dir.exists():
+            shutil.rmtree(archive_dir)
+
+        shutil.copytree((exp_dir / 'autocontrol'), (exp_dir / 'autocontrol_archive'))
 
 st.write("""
 ## DataLad
@@ -224,7 +338,7 @@ if not st.session_state.cfg.use_datalad:
     st.stop()
 
 app_functions.setup_app_dirs(create_dirs=False, init_datalad=True)
-dm = st.session_state.datamanager
+dm: datamanager.DataManager = st.session_state.datamanager
 
 root_dir = st.session_state.dataroot_dir
 project_dir = root_dir / st.session_state.cfg.project
@@ -263,10 +377,7 @@ else:
             st.warning('DataLad branch (project / campaign / experiment) has unsaved changes.')
         with col10:
             if st.button("Save DataLad Branch.", type='primary'):
-                dm.save(path=exp_dir, recursive=True)
-                dm.save(path=campaign_dir, recursive=False)
-                dm.save(path=project_dir, recursive=False)
-                dm.save(path=root_dir, recursive=False)
+                dgapi.save_branch(path=exp_dir)
                 st.rerun()
         st.stop()
 
@@ -291,80 +402,10 @@ if not use_GIN:
     st.stop()
 
 with st.expander(label='Connection Setup', expanded=False):
-
-    gin_user = st.text_input('GIN User', value=st.session_state.cfg.GIN_user)
-    if gin_user is not None and  gin_user != st.session_state.cfg.GIN_user:
-        st.session_state.cfg.GIN_user = gin_user
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    ssh_hostname = st.text_input('GIN URL / SSH Host Name', value=st.session_state.cfg.GIN_url)
-    if ssh_hostname != st.session_state.cfg.GIN_url:
-        st.session_state.cfg.GIN_url = ssh_hostname
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    ssh_host_alias = st.text_input('GIN / SSH Host Alias for .ssh/config', value=st.session_state.cfg.SSH_host_alias)
-    if ssh_host_alias != st.session_state.cfg.SSH_host_alias:
-        st.session_state.cfg.SSH_host_alias = ssh_host_alias
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    st.text("We use SSH key authentication for communicating with GIN. This section will ensure the proper key setup.")
-
-    # GIN SSH UI section (example snippet)
-    ssh_host_alias_default = ssh_hostname
-    ssh_host_user = 'git' if ssh_hostname == 'gin.g-node.org' else gin_user
-
-    config_file = app_functions.ssh_config_path()
-    found, message = app_functions.ssh_config_has_entry(ssh_host_alias, ssh_hostname, ssh_host_user)
-
-    suggested_private_key = app_functions.ssh_default_key_path(ssh_hostname, ssh_host_user)
-    private_key_path = Path(suggested_private_key).expanduser()
-    public_key_path = private_key_path.with_suffix('.pub')
-
-    if found:
-        st.success(message)
-        if public_key_path.exists():
-            st.text(f"Here is the folder with you public key '{str(public_key_path.name)}' that should be provided to "
-                    f"your gin.g-node.org account.")
-        else:
-            st.text(f"Although an entry for the host and user was found in the SSH config file, no key was found under "
-                    f"the canonical name: '{str(public_key_path.name)}'. It might be missing or under a different name."
-                    f" Either regenerate a new key pair or provide the differently named key to gin.g-node.org. Inspect"
-                    f" or clean up .ssh/config for a coherent setup.")
-    else:
-        st.info(message)
-        if st.button("Create new SSH key pair."):
-
-
-            st.text("This creates an SSH ed25519 key pair locally. You can then copy the public key into your GIN "
-                    "account manually.")
-
-            comment = f"{ssh_host_user}@{ssh_hostname}"
-            success, message = app_functions.ssh_generate_keypair(private_key_path=private_key_path, comment=comment)
-            if success:
-                st.success(message)
-            else:
-                st.error(message)
-        st.stop()
-
-    col11, col12, col13 = st.columns([3, 4, 3])
-    with col11:
-        file_browser_button(public_key_path.parent, label="Show SSH Directory ↗️")
-    with col12:
-        if st.button("Test SSH Connection", type='primary'):
-            ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
-            if ok:
-                st.success(summary)
-            else:
-                st.error(summary)
-            if details:
-                st.code(details)
-            st.caption(f"Command: {shlex.join(['ssh', '-T', '-o', 'BatchMode=yes', ssh_host_alias])}")
-
-            if not ok:
-                st.stop()
+    UI_fragment_SSH_connection()
 
 with st.expander(label='Repository Actions', expanded=True):
-    status = dm.get_git_sync_status(dataset=exp_dir)
+    status = dgapi.get_git_sync_status(dataset=exp_dir)
     ok = status['ok']
     state = status['state']
     message = status['message']
@@ -387,7 +428,8 @@ with st.expander(label='Repository Actions', expanded=True):
                 repo_name=st.session_state.cfg.user_name,
                 dataset=root_dir,
                 recursive=True,
-                push_annex_data=True
+                push_annex_data=True,
+                existing='reconfigure'
             )
             st.rerun()
         st.stop()
@@ -398,7 +440,7 @@ with st.expander(label='Repository Actions', expanded=True):
         st.stop()
 
     if state == 'fetch_failed':
-        status_parent = dm.get_git_sync_status(dataset=exp_dir, from_parent=True)
+        status_parent = dgapi.get_git_sync_status(dataset=exp_dir, from_parent=True)
 
         st.error('Status from Experiment Dataset: ' + state + ': ' + message)
         st.info('Status from parent Category Dataset: ' + status_parent['state'] + ': ' + status_parent['message'])
@@ -407,7 +449,7 @@ with st.expander(label='Repository Actions', expanded=True):
             st.text('The parent dataset repository appears to be o.k. If the remote repository for the experiment '
                     'dataset has been deleted, you can try to remove and republish the experiment dataset only.')
             if st.button('Remove and republish stale remote siblings for entire Datalad tree', type='primary'):
-                dm.remove_siblings(dataset=exp_dir, recursive=False)
+                dgapi.remove_siblings(dataset=exp_dir, recursive=False)
                 dm.publish_gin_sibling(
                     sibling_name='gin',
                     repo_name=st.session_state.cfg.user_name,
@@ -422,7 +464,7 @@ with st.expander(label='Repository Actions', expanded=True):
                     "the entire tree again.")
             if st.button('Remove and republish stale remote siblings for the current Experiment only.',
                          type='primary'):
-                dm.remove_siblings(dataset=root_dir, recursive=True)
+                dgapi.remove_siblings(dataset=root_dir, recursive=True)
                 st.rerun()
 
     if state == 'up_to_date':
@@ -430,23 +472,23 @@ with st.expander(label='Repository Actions', expanded=True):
     elif state == 'ahead':
         st.warning("Local branch is ahead.")
         if st.button('Push local branch to remote.', type='primary'):
-            dm.push_to_remotes(dataset=exp_dir, recursive=True, push_annex_data=True)
+            dgapi.push_to_remotes(dataset=exp_dir, recursive=True, push_annex_data=True)
             st.rerun()
     elif state == 'behind':
         st.warning("Local branch is behind.")
         if st.button('Update local branch from remote.', type='primary'):
-            dm.pull_from_remotes(dataset=exp_dir, recursive=True)
-            dm.get_content(dataset=exp_dir, recursive=True)
+            dgapi.pull_from_remotes(dataset=exp_dir, recursive=True)
+            dgapi.get_content(dataset=exp_dir, recursive=True)
             st.rerun()
     elif state == 'diverged':
         st.warning("Local branch and remote are diverged. Feel free to sync manually.")
         col14, col15 = st.columns([5, 5])
         with col14:
             if st.button('Update local branch from remote.', type='primary'):
-                dm.pull_from_remotes(dataset=exp_dir, recursive=True)
-                dm.get_content(dataset=exp_dir, recursive=True)
+                dgapi.pull_from_remotes(dataset=exp_dir, recursive=True)
+                dgapi.get_content(dataset=exp_dir, recursive=True)
                 st.rerun()
         with col15:
             if st.button('Push local branch to remote.', type='primary'):
-                dm.push_to_remotes(dataset=exp_dir, recursive=True, push_annex_data=True)
+                dgapi.push_to_remotes(dataset=exp_dir, recursive=True, push_annex_data=True)
                 st.rerun()

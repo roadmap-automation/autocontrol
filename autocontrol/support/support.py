@@ -1,5 +1,3 @@
-import configparser
-
 import autocontrol.server as server
 from autocontrol.support import configuration
 
@@ -10,7 +8,6 @@ from pathlib import Path
 import platform
 import psutil
 import requests
-import shutil
 import signal
 import socket
 import subprocess
@@ -88,8 +85,11 @@ def resume_queue(url=None, port=None):
 def start_streamlit_viewer(storage_path, server_address, server_port):
     viewer_path = Path(__file__).parent.parent / 'streamlit' / 'Main.py'
     server_addr = server_address + ':' + str(server_port)
-    _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--storage_dir', storage_path, '--atc_address',
-                        server_addr],)
+    if storage_path is not None:
+        _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--storage_dir', storage_path, '--atc_address',
+                            server_addr],)
+    else:
+        _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--atc_address', server_addr], )
 
 
 def start(portnumber=5004, storage_path=None, delete_contents=False):
@@ -109,12 +109,12 @@ def start(portnumber=5004, storage_path=None, delete_contents=False):
         storage_path = Path(storage_path).expanduser().resolve()
         print("Autocontrol storage Path provided: {}".format(storage_path))
         storage_path.mkdir(parents=True, exist_ok=True)
+
         if delete_contents:
-            for item in storage_path.iterdir():
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
-                    item.unlink()
+            (storage_path / 'active_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'history_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'priority_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'channel_po.json').unlink(missing_ok=True)
 
     # ------------------ Starting Streamlit Monitor----------------------------------
     # set flag in autocontrol configuration that startup is in progress (gives the user the chance to potentially
@@ -136,6 +136,7 @@ def start(portnumber=5004, storage_path=None, delete_contents=False):
         sleep_counter += 1
         config = configuration.load_persistent_cfg()
         if not config.autocontrol_startup:
+            storage_path=config.autocontrol_dir
             break
         if sleep_counter % 10 == 0:
             print("Waiting for the Autocontrol App to authorize server startup ...")

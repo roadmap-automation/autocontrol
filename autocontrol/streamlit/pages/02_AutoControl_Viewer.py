@@ -54,7 +54,6 @@ def click_restart_button():
             st.session_state.restart_all = False
 
 
-@st.cache_data
 def analyze_df_for_device_pairs(df):
     filtered_df = df[df['task_type'] == 'transfer']
     pairs_df = filtered_df[['device', 'target_device']].dropna()
@@ -199,25 +198,28 @@ def replace_priority_with_int(df):
 
 def retrieve_md_key(row, key_strs=('submission_response',)):
     status = ''
-    taskmd = subtaskmd = False
-    task = row['task']
-    if task is not None:
-        # there is ever only one item in this tuple
-        task = task_struct.Task.parse_raw(task)
+    taskmd = False
+    task_json = row['task']
+    if task_json is None:
+        return status
+    task = task_struct.Task.model_validate_json(task_json)
     if task.md is not None:
         for key_str in key_strs:
             if key_str in task.md:
                 if not taskmd:
                     status += 'Task status:\n'
                     taskmd = True
-                status += key_str + ': ' + task.md[key_str] + '\n'
+                status += f'{key_str}: {task.md[key_str]}\n'
     for i, subtask in enumerate(task.tasks):
+        subtaskmd = False
+        if subtask.md is None:
+            continue
         for key_str in key_strs:
             if key_str in subtask.md:
                 if not subtaskmd:
-                    status += 'Subtask {} status:\n'.format(i)
+                    status += f'Subtask {i} status:\n'
                     subtaskmd = True
-                status += key_str + ': ' + subtask.md[key_str] + '\n'
+                status += f'{key_str}: {subtask.md[key_str]}\n'
     return status
 
 
@@ -284,7 +286,6 @@ def render_data(data, color, filename, identifier_list, channel_po, split_by_dev
     g.render(filename=os.path.join(storage_path, filename), format='png')
 
 
-@st.cache_data
 def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifier_list, channel_po,
                       storage_path=''):
     render_data(pdata, color='lightblue', filename='priority_queue', identifier_list=identifier_list,

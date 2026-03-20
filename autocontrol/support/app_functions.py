@@ -61,7 +61,7 @@ def setup_app_dirs(
             default_project = cfg.project,
             default_campaign = cfg.campaign,
             GIN_url = cfg.GIN_url,
-            GIN_repo = cfg.GIN_repo,
+            GIN_repo = cfg.user_name,
             GIN_user = cfg.GIN_user,
             verbose=True
         )

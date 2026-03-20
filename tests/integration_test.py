@@ -57,8 +57,10 @@ def integration_test():
     storage_path = os.path.join(cfd, '..', 'test_storage')
 
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
-    support.start(portnumber=port, storage_path=storage_path)
-
+    # test startup w/ providing a storage path
+    # support.start(portnumber=port, storage_path=storage_path, delete_contents=True)
+    # test startup w/o providing a storage path
+    support.start(portnumber=port, storage_path=None, delete_contents=True)
     # ------------------ Submitting Task ----------------------------------
 
     task = tsk.Task(

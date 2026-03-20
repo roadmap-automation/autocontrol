@@ -36,7 +36,6 @@ class DataConfig:
     # GIN repository
     use_GIN: bool = False
     GIN_url: str = 'gin.g-node.org'
-    GIN_repo: str = 'datamanager'
     GIN_user: str = 'fhein'
     SSH_host_alias: str = 'gin.g-node.org'
 
