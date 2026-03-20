@@ -1,6 +1,6 @@
 import autocontrol.task_struct as tsk
 from autocontrol.support import support
-import os
+
 import time
 import uuid
 
@@ -52,15 +52,14 @@ def submit_sample_block(qcmd_channel=None):
 def integration_test():
     print('Starting integration test')
 
-    print('Preparing test directory')
-    cfd = os.path.dirname(os.path.abspath(__file__))
-    storage_path = os.path.join(cfd, '..', 'test_storage')
-
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
     # test startup w/ providing a storage path
+    # import tempfile
+    # print('Preparing test directory')
+    # storage_path = tempfile.mkdtemp()
     # support.start(portnumber=port, storage_path=storage_path, delete_contents=True)
     # test startup w/o providing a storage path
-    support.start(portnumber=port, storage_path=None, delete_contents=True)
+    # support.start(portnumber=port, storage_path=None, delete_contents=True)
     # ------------------ Submitting Task ----------------------------------
 
     task = tsk.Task(
