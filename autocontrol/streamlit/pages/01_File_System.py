@@ -5,12 +5,12 @@ import shutil
 import subprocess
 import platform
 from pathlib import Path
-import shlex
 
 import streamlit as st
 
 from roadmap_datamanager import datamanager
 from roadmap_datamanager import datalad_gin_api as dgapi
+from roadmap_datamanager.gui import streamlit_components as stc
 
 from autocontrol.support import configuration
 from autocontrol.support import app_functions
@@ -40,78 +40,6 @@ def start_server():
     Path(st.session_state.cfg.autocontrol_dir).mkdir(parents=True, exist_ok=True)
     configuration.save_persistent_cfg(st.session_state.cfg)
 
-def UI_fragment_SSH_connection():
-    gin_user = st.text_input('GIN User', value=st.session_state.cfg.GIN_user)
-    if gin_user is not None and  gin_user != st.session_state.cfg.GIN_user:
-        st.session_state.cfg.GIN_user = gin_user
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    ssh_hostname = st.text_input('GIN URL / SSH Host Name', value=st.session_state.cfg.GIN_url)
-    if ssh_hostname != st.session_state.cfg.GIN_url:
-        st.session_state.cfg.GIN_url = ssh_hostname
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    ssh_host_alias = st.text_input('GIN / SSH Host Alias for .ssh/config', value=st.session_state.cfg.SSH_host_alias)
-    if ssh_host_alias != st.session_state.cfg.SSH_host_alias:
-        st.session_state.cfg.SSH_host_alias = ssh_host_alias
-        configuration.save_persistent_cfg(st.session_state.cfg)
-
-    st.text("We use SSH key authentication for communicating with GIN. This section will ensure the proper key setup.")
-
-    # GIN SSH UI section
-    ssh_host_alias_default = ssh_hostname
-    ssh_host_user = 'git' if ssh_hostname == 'gin.g-node.org' else gin_user
-
-    config_file = app_functions.ssh_config_path()
-    found, message = app_functions.ssh_config_has_entry(ssh_host_alias, ssh_hostname, ssh_host_user)
-
-    suggested_private_key = app_functions.ssh_default_key_path(ssh_hostname, ssh_host_user)
-    private_key_path = Path(suggested_private_key).expanduser()
-    public_key_path = private_key_path.with_suffix('.pub')
-
-    if found:
-        st.success(message)
-        if public_key_path.exists():
-            st.text(f"Here is the folder with you public key '{str(public_key_path.name)}' that should be provided to "
-                    f"your gin.g-node.org account.")
-        else:
-            st.text(f"Although an entry for the host and user was found in the SSH config file, no key was found under "
-                    f"the canonical name: '{str(public_key_path.name)}'. It might be missing or under a different name."
-                    f" Either regenerate a new key pair or provide the differently named key to gin.g-node.org. Inspect"
-                    f" or clean up .ssh/config for a coherent setup.")
-    else:
-        st.info(message)
-        if st.button("Create new SSH key pair."):
-
-
-            st.text("This creates an SSH ed25519 key pair locally. You can then copy the public key into your GIN "
-                    "account manually.")
-
-            comment = f"{ssh_host_user}@{ssh_hostname}"
-            success, message = app_functions.ssh_generate_keypair(private_key_path=private_key_path, comment=comment)
-            if success:
-                st.success(message)
-            else:
-                st.error(message)
-        st.stop()
-
-    col11, col12, col13 = st.columns([3, 4, 3])
-    with col11:
-        file_browser_button(public_key_path.parent, label="Show SSH Directory ↗️")
-    with col12:
-        if st.button("Test SSH Connection", type='primary'):
-            ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
-            if ok:
-                st.success(summary)
-            else:
-                st.error(summary)
-            if details:
-                st.code(details)
-            st.caption(f"Command: {shlex.join(['ssh', '-T', '-o', 'BatchMode=yes', ssh_host_alias])}")
-
-            if not ok:
-                st.stop()
-
 if st.session_state.storage_path_overwrite:
     st.info(f"Autocontrol storage path has been overwritten at startup to '{st.session_state.cfg.autocontrol_dir}'. "
             f"Datamanager's Datalad and remote storage capabilities are not available. Start autocontrol with "
@@ -126,78 +54,17 @@ st.write("""
 """)
 if not cfg.autocontrol_startup:
     st.info("Autocontrol server startup has been authorized. No change of storage directory possible.")
+    dm_root = Path(cfg.dm_root).expanduser().resolve()
 else:
-    st.write("""
-        ## User
-                 """)
-    user_list = []
-    default_user = None
-    root = st.session_state.user_root_dir
-    if root.is_dir():
-        user_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
-        user_list.sort()
-    if st.session_state.cfg.user_name is not None:
-        if st.session_state.cfg.user_name not in user_list:
-            user_list.append(st.session_state.cfg.user_name)
-            user_list.sort()
-        default_user = user_list.index(st.session_state.cfg.user_name)
-    user = st.selectbox(
-        "User Name",
-        options=user_list,
-        index=default_user,
-        placeholder='Create or select a user.',
-        accept_new_options=True)
-    if user and user != st.session_state.cfg.user_name:
-        st.session_state.cfg.user_name = user
-        st.session_state.cfg.project = None
-        st.session_state.cfg.campaign = None
-        st.session_state.cfg.experiment = None
-        configuration.save_persistent_cfg(st.session_state.cfg)
-    if st.session_state.cfg.user_name is None:
-        st.stop()
-
-    st.session_state.dataroot_dir = st.session_state.user_root_dir / cfg.user_name
-
-    col1, col2, col3 = st.columns([6, 1, 3])
-    info_text = "Data root directory " + str(st.session_state.dataroot_dir)
-    if st.session_state.dataroot_dir.is_dir():
-        info_text += " exists."
-        with col1:
-            st.text(info_text)
-        with col2:
-            file_browser_button(st.session_state.dataroot_dir)
-    else:
-        info_text += (" has not been created, yet. If you intend to use GIN remote storage, make sure that the SSH "
-                      "connection is working properly. The script will attempt to clone an existing repository for "
-                      "this user when creating a data root.")
-
-        with col1:
-            st.text(info_text)
-        with col3:
-            if st.button("Create Data Root Directory", type='primary'):
-                st.session_state.dataroot_dir.mkdir(parents=True, exist_ok=True)
-                # check SSH connection
-                ssh_host_alias = st.session_state.cfg.SSH_host_alias
-                ok = False
-                if ssh_host_alias is not None:
-                    ok, summary, details = app_functions.ssh_test_connection(ssh_host_alias)
-                if not ok:
-                    st.warning("SSH connection failed.")
-                else:
-                    try:
-                        source_url = 'https://' + cfg.GIN_url + '/' + cfg.GIN_user + '/' + cfg.user_name
-                        dgapi.clone_from_remote(
-                            dest=st.session_state.dataroot_dir,
-                            user_name=cfg.GIN_user,
-                            repo_name=cfg.user_name
-                        )
-                    except Exception as e:
-                        st.info("No remote repository found.")
-                        st.text(f"Detailed response: {e}")
-                st.rerun()
-
-        st.write("""## Remote Connection Setup""")
-        UI_fragment_SSH_connection()
+    # ----------------------- User dialog --------------------------------------
+    cfg= stc.UI_fragment_user(
+        cfg,
+        user_root_dir=st.session_state.user_root_dir
+    )
+    st.session_state.cfg = cfg
+    configuration.save_persistent_cfg(st.session_state.cfg)
+    dm_root = st.session_state.cfg.dm_root
+    if dm_root is None or not dm_root.is_dir():
         st.stop()
 
     st.write("""
@@ -206,7 +73,7 @@ else:
 
     project_list = []
     default_project = None
-    root = st.session_state.dataroot_dir
+    root = dm_root
     if root.is_dir():
         project_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
         project_list.sort()
@@ -321,72 +188,23 @@ if (exp_dir / 'autocontrol').is_dir():
 
         shutil.copytree((exp_dir / 'autocontrol'), (exp_dir / 'autocontrol_archive'))
 
-st.write("""
-## DataLad
-""")
 if st.session_state.storage_path_overwrite:
+    st.write("""
+    ## DataLad
+    """)
     st.info("Storage path outside Datalad repository or not below experiment level. Datalad and remote storage"
             "disabled.")
     st.stop()
 
-use_datalad = st.toggle(label='Use DataLad', value=st.session_state.cfg.use_datalad)
-if use_datalad != st.session_state.cfg.use_datalad:
-    st.session_state.cfg.use_datalad = use_datalad
-    configuration.save_persistent_cfg(st.session_state.cfg)
-
-if not st.session_state.cfg.use_datalad:
+# --------------------- Datalad UI fragment --------------------------
+cfg, dm = stc.UI_fragment_datalad(
+    cfg=st.session_state.cfg
+)
+st.session_state.cfg = cfg
+st.session_state.datamanager = dm
+configuration.save_persistent_cfg(st.session_state.cfg)
+if not st.session_state.cfg.use_datalad or dm is None:
     st.stop()
-
-app_functions.setup_app_dirs(create_dirs=False, init_datalad=True)
-dm: datamanager.DataManager = st.session_state.datamanager
-
-root_dir = st.session_state.dataroot_dir
-project_dir = root_dir / st.session_state.cfg.project
-campaign_dir = project_dir / st.session_state.cfg.campaign
-exp_dir = campaign_dir / st.session_state.cfg.experiment
-
-_, r_installed, r_status = dm.get_status(dataset=root_dir, recursive=False)
-_, p_installed, p_status = dm.get_status(dataset=project_dir, recursive=False)
-_, c_installed, c_status = dm.get_status(dataset=campaign_dir, recursive=False)
-_, e_installed, e_status = dm.get_status(dataset=exp_dir, recursive=False)
-ds_installed = r_installed and p_installed and c_installed and e_installed
-
-#all dirs exists at this point in the script as checked above
-col9, col10 = st.columns([7, 3])
-if not ds_installed:
-    with col9:
-        st.info('DataLad branch (project / campaign / experiment) is not (fully) initialized.')
-    with col10:
-        if st.button("Initialize DataLad Tree.", type='primary'):
-            # ensure that data structure is a datalad tree
-            dm.init_tree(project=cfg.project, campaign=cfg.campaign, experiment=cfg.experiment, force=True)
-            st.rerun()
-    st.stop()
-else:
-    # st.info(e_status)
-    status = r_status + p_status + c_status + e_status
-    clean = True
-    for element in status:
-        if element['state'] != 'clean':
-            clean = False
-    if clean:
-        with col9:
-            st.success('DataLad branch (project / campaign / experiment) is saved (clean).')
-    else:
-        with col9:
-            st.warning('DataLad branch (project / campaign / experiment) has unsaved changes.')
-        with col10:
-            if st.button("Save DataLad Branch.", type='primary'):
-                dgapi.save_branch(path=exp_dir)
-                st.rerun()
-        st.stop()
-
-with st.expander(label='Detailed Status', expanded=False):
-    only_non_clean = st.toggle(label='Show only non-clean entries.', value=True)
-    if only_non_clean:
-        status = [element for element in status if element['state']!='clean']
-    # Pretty-print the combined DataLad status (list of dicts) as JSON.
-    st.text(json.dumps(status, indent=2, sort_keys=True, default=str))
 
 
 st.write("""
@@ -402,7 +220,8 @@ if not use_GIN:
     st.stop()
 
 with st.expander(label='Connection Setup', expanded=False):
-    UI_fragment_SSH_connection()
+    st.session_state.cfg = stc.UI_fragment_SSH_connection(st.session_state.cfg)
+    configuration.save_persistent_cfg(st.session_state.cfg)
 
 with st.expander(label='Repository Actions', expanded=True):
     status = dgapi.get_git_sync_status(dataset=exp_dir)
@@ -426,7 +245,7 @@ with st.expander(label='Repository Actions', expanded=True):
             dm.publish_gin_sibling(
                 sibling_name='gin',
                 repo_name=st.session_state.cfg.user_name,
-                dataset=root_dir,
+                dataset=dm_root,
                 recursive=True,
                 push_annex_data=True,
                 existing='reconfigure'
@@ -464,7 +283,7 @@ with st.expander(label='Repository Actions', expanded=True):
                     "the entire tree again.")
             if st.button('Remove and republish stale remote siblings for the current Experiment only.',
                          type='primary'):
-                dgapi.remove_siblings(dataset=root_dir, recursive=True)
+                dgapi.remove_siblings(dataset=dm_root, recursive=True)
                 st.rerun()
 
     if state == 'up_to_date':

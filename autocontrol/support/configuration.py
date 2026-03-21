@@ -39,6 +39,9 @@ class DataConfig:
     GIN_user: str = 'fhein'
     SSH_host_alias: str = 'gin.g-node.org'
 
+    # Datamanager root directory
+    dm_root: Optional[str] = None
+
     # autocontrol-specific fields
     autocontrol_dir: Optional[str] = None
     atc_address: Optional[str] = None

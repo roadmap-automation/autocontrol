@@ -2,6 +2,7 @@ from support import app_functions
 
 from roadmap_datamanager import datamanager
 from roadmap_datamanager import datalad_gin_api as dgapi
+from roadmap_datamanager import configuration as dmc
 from autocontrol.support import configuration
 
 import argparse
@@ -47,7 +48,10 @@ def main(storage_path=None, atc_address=None):
             print("Storage path provided to autocontrol is within existing Datamanager Repository.")
             print("Datalad and Remote storage capabilities available via the Streamlit App.")
             # initialize a datamanager instance just for bootstrapping, thereby updating the config
-            _ = datamanager.DataManager(bootstrap_path = storage_path)
+            st.session_state.cfg = dmc.bootstrap_config(
+                path=storage_path,
+                cfg=st.session_state.cfg
+            )
             st.session_state.storage_path_overwrite = False
             st.session_state.cfg.autocontrol_dir = str(storage_path)
             app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
