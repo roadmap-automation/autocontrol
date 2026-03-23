@@ -1,6 +1,5 @@
 from support import app_functions
 
-from roadmap_datamanager import datamanager
 from roadmap_datamanager import datalad_gin_api as dgapi
 from roadmap_datamanager import configuration as dmc
 from autocontrol.support import configuration

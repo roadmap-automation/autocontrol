@@ -3,19 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 import streamlit as st
 
-from roadmap_datamanager import datamanager
 from autocontrol.support import configuration
 
 
 def setup_app_dirs(
         user_root_dir: str | Path = None,
-        create_dirs=False,
-        init_datalad=False):
+        create_dirs=False):
     """
     Sets up directories for app use. Initializes the datamanager.
     :param user_root_dir: (bool) root dir path under which user (root) datamanager datasets will be situated
     :param create_dirs: (bool) whether to create directories if they do not exist
-    :param init_datalad: (bool) whether to initialize the DataLad repo in the app dir tree
     :return:
     """
     # check if canonical app working directories exist
@@ -44,25 +41,3 @@ def setup_app_dirs(
     st.session_state["data_folders_ready"] = True
     dataroot_dir.mkdir(parents=True, exist_ok=True)
     exp_root.mkdir(parents=True, exist_ok=True)
-
-    if st.session_state.cfg.autocontrol_dir is None:
-        autocontrol_dir = exp_root / 'autocontrol'
-        autocontrol_dir.mkdir(parents=True, exist_ok=True)
-        # save paths to persistent session state
-        st.session_state.cfg.autocontrol_dir = autocontrol_dir
-
-    if init_datalad:
-        dm = datamanager.DataManager(
-            root= dataroot_dir,
-            user_name = cfg.user_name,
-            user_email = cfg.user_email,
-            default_project = cfg.project,
-            default_campaign = cfg.campaign,
-            GIN_url = cfg.GIN_url,
-            GIN_repo = cfg.user_name,
-            GIN_user = cfg.GIN_user,
-            verbose=True
-        )
-        st.session_state['datamanager'] = dm
-    else:
-        st.session_state['datamanager'] = None

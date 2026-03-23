@@ -8,7 +8,6 @@ from pathlib import Path
 
 import streamlit as st
 
-from roadmap_datamanager import datamanager
 from roadmap_datamanager import datalad_gin_api as dgapi
 from roadmap_datamanager.gui import streamlit_components as stc
 
@@ -17,24 +16,6 @@ from autocontrol.support import app_functions
 
 st.set_page_config(layout="wide")
 
-def open_in_file_browser(path: Path):
-    if not path.exists():
-        return
-
-    system = platform.system()
-
-    if system == "Darwin":        # macOS
-        subprocess.run(["open", path])
-    elif system == "Windows":
-        subprocess.run(["explorer", path])
-    elif system == "Linux":
-        subprocess.run(["xdg-open", path])
-
-def file_browser_button(path: Path, label="↗️"):
-    if path.exists():
-        if st.button(label, help=f"Open {path}"):
-            open_in_file_browser(path)
-
 def start_server():
     st.session_state.cfg.autocontrol_startup = False
     Path(st.session_state.cfg.autocontrol_dir).mkdir(parents=True, exist_ok=True)
@@ -42,7 +23,6 @@ def start_server():
 
 
 # --------------------------------- Streamlit UI Start --------------------------
-
 if st.session_state.storage_path_overwrite:
     st.info(f"Autocontrol storage path has been overwritten at startup to '{st.session_state.cfg.autocontrol_dir}'. "
             f"Datamanager's Datalad and remote storage capabilities are not available. Start autocontrol with "
@@ -79,29 +59,33 @@ else:
         app_functions.setup_app_dirs(create_dirs=True)
         st.rerun()
     else:
-        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
+        app_functions.setup_app_dirs(create_dirs=False)
 
     if not st.session_state.data_folders_ready:
         st.stop()
 
 # -------------------- Storage Directory --------------------------------------
-
 st.write("""
 ## Autocontrol Storage Directory
 """)
-exp_dir = root = st.session_state.dataroot_dir / st.session_state.cfg.project / st.session_state.cfg.campaign
+exp_dir = root = st.session_state.cfg.dm_root / st.session_state.cfg.project / st.session_state.cfg.campaign
 exp_dir = exp_dir / st.session_state.cfg.experiment
+autocontrol_dir = exp_dir/ 'autocontrol'
+if st.session_state.cfg.autocontrol_dir is None:
+    autocontrol_dir.mkdir(parents=True, exist_ok=True)
+    st.session_state.cfg.autocontrol_dir = autocontrol_dir
+    configuration.save_persistent_cfg(st.session_state.cfg)
+
 col7, col8 = st.columns([7, 3])
 with col7:
-    st.session_state.cfg.autocontrol_dir = str(exp_dir / 'autocontrol')
     st.success(f"Autocontrol storage directory: {st.session_state.cfg.autocontrol_dir}")
 with col8:
     if cfg.autocontrol_startup:
         st.button("Authorize Autocontrol Server Startup", type='primary', on_click=start_server)
     else:
-        file_browser_button(Path(st.session_state.cfg.autocontrol_dir))
+        stc.file_browser_button(Path(st.session_state.cfg.autocontrol_dir))
 
-if (exp_dir / 'autocontrol').is_dir():
+if autocontrol_dir.is_dir():
     st.text("The autocontrol storage folder is not archived due to frequent in-place modification. ")
     if st.button("Make an archived copy of the storage directory"):
         archive_dir = exp_dir / "autocontrol_archive"
@@ -110,6 +94,7 @@ if (exp_dir / 'autocontrol').is_dir():
 
         shutil.copytree((exp_dir / 'autocontrol'), (exp_dir / 'autocontrol_archive'))
 
+# --------------------- Datalad UI fragment --------------------------
 if st.session_state.storage_path_overwrite:
     st.write("""
     ## DataLad
@@ -118,7 +103,6 @@ if st.session_state.storage_path_overwrite:
             "disabled.")
     st.stop()
 
-# --------------------- Datalad UI fragment --------------------------
 cfg, dm = stc.UI_fragment_datalad(
     cfg=st.session_state.cfg
 )
@@ -128,7 +112,7 @@ configuration.save_persistent_cfg(st.session_state.cfg)
 if not st.session_state.cfg.use_datalad or dm is None:
     st.stop()
 
-
+# ---------------------- GIN remote storage ----------------------------
 st.write("""
 ## GIN Remote Storage
 """)
