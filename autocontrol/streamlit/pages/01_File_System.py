@@ -40,6 +40,9 @@ def start_server():
     Path(st.session_state.cfg.autocontrol_dir).mkdir(parents=True, exist_ok=True)
     configuration.save_persistent_cfg(st.session_state.cfg)
 
+
+# --------------------------------- Streamlit UI Start --------------------------
+
 if st.session_state.storage_path_overwrite:
     st.info(f"Autocontrol storage path has been overwritten at startup to '{st.session_state.cfg.autocontrol_dir}'. "
             f"Datamanager's Datalad and remote storage capabilities are not available. Start autocontrol with "
@@ -64,105 +67,24 @@ else:
     st.session_state.cfg = cfg
     configuration.save_persistent_cfg(st.session_state.cfg)
     dm_root = st.session_state.cfg.dm_root
+
     if dm_root is None or not dm_root.is_dir():
         st.stop()
 
-    st.write("""
-        ## Project / Campaign / Experiment
-        """)
-
-    project_list = []
-    default_project = None
-    root = dm_root
-    if root.is_dir():
-        project_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
-        project_list.sort()
-    if st.session_state.cfg.project is not None:
-        if st.session_state.cfg.project not in project_list:
-            project_list.append(st.session_state.cfg.project)
-            project_list.sort()
-        default_project = project_list.index(st.session_state.cfg.project)
-    project = st.selectbox(
-        "Project Name",
-        options=project_list,
-        index=default_project,
-        placeholder='Create or select a project.',
-        accept_new_options=True)
-    if project and project != st.session_state.cfg.project:
-        st.session_state.cfg.project = project
-        configuration.save_persistent_cfg(st.session_state.cfg)
-        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
-    if st.session_state.cfg.project is None:
-        st.stop()
-
-    campaign_list = []
-    default_campaign = None
-    root = st.session_state.dataroot_dir / st.session_state.cfg.project
-    if root.is_dir():
-        campaign_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
-        campaign_list.sort()
-    if st.session_state.cfg.campaign is not None:
-        if st.session_state.cfg.campaign not in campaign_list:
-            campaign_list.append(st.session_state.cfg.campaign)
-            campaign_list.sort()
-        default_campaign = campaign_list.index(st.session_state.cfg.campaign)
-    campaign = st.selectbox(
-        "Campaign Name",
-        options=campaign_list,
-        index=default_campaign,
-        placeholder='Create or select a campaign.',
-        accept_new_options=True)
-    if campaign and campaign != st.session_state.cfg.campaign:
-        st.session_state.cfg.campaign = campaign
-        configuration.save_persistent_cfg(st.session_state.cfg)
-        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
-    if st.session_state.cfg.campaign is None:
-        st.stop()
-
-    experiment_list = []
-    default_experiment = None
-    root = st.session_state.dataroot_dir / st.session_state.cfg.project / st.session_state.cfg.campaign
-    if root.is_dir():
-        experiment_list = [p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
-        experiment_list.sort()
-    if st.session_state.cfg.experiment is not None:
-        if st.session_state.cfg.experiment not in experiment_list:
-            experiment_list.append(st.session_state.cfg.experiment)
-            experiment_list.sort()
-        default_experiment = experiment_list.index(st.session_state.cfg.experiment)
-    experiment = st.selectbox(
-        "Experiment Name",
-        options=experiment_list,
-        index=default_experiment,
-        placeholder='Create or select an experiment.',
-        accept_new_options=True)
-    if experiment and experiment != st.session_state.cfg.experiment:
-        st.session_state.cfg.experiment = experiment
-        configuration.save_persistent_cfg(st.session_state.cfg)
-        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
-    if st.session_state.cfg.experiment is None:
-        st.stop()
-
-    col4, col5, col6 = st.columns([6, 1, 3])
-    exp_dir = root / st.session_state.cfg.experiment
-    info_text = "Experiment directory " + str(exp_dir)
-    if exp_dir.is_dir():
-        info_text += " exists."
-        with col4:
-            st.text(info_text)
-        with col5:
-            file_browser_button(exp_dir)
-
+    # ------------------ Project/Campaign/Experiment Diaolog -------------------
+    cfg, create_folders = stc.UI_fragment_PCE(cfg)
+    st.session_state.cfg = cfg
+    configuration.save_persistent_cfg(st.session_state.cfg)
+    if create_folders:
+        app_functions.setup_app_dirs(create_dirs=True)
+        st.rerun()
     else:
-        info_text += " has not been created, yet."
-        with col4:
-            st.text(info_text)
-        with col6:
-            if st.button("Create Experimental Directory", type='primary'):
-                # exp_dir.mkdir(parents=True, exist_ok=True)
-                app_functions.setup_app_dirs(create_dirs=True)
-                st.rerun()
+        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
+
+    if not st.session_state.data_folders_ready:
         st.stop()
+
+# -------------------- Storage Directory --------------------------------------
 
 st.write("""
 ## Autocontrol Storage Directory

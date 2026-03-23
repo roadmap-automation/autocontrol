@@ -101,13 +101,13 @@ def main(storage_path=None, atc_address=None):
     ## Storage
     
     While almost any autocontrol storage path can be provided manually, DataLad and remote storage integration prefers
-    the storage path to be located directly under the 'Experiment' level of a User / Project / Campaign / Experiment
+    the storage path directly under the 'Experiment' level of a User / Project / Campaign / Experiment
     Datalad repository. The storage path should be named 'autocontrol' for it to be recognized as such. The File System
     tab will facilitate this convention.
     
     Autocontrol uses SQLite databases for task data storage. Those are not readily archivable in a Git Annex repository,
-    because they are frequently modified in place and can be quite large. Therefore, we will implement an archive 
-    functionality (tbd) that will store either the entire autocontrol path or parts of it.
+    because they are frequently modified in place and can be quite large. Therefore, an archive 
+    functionality has been implemented.
     """)
 
 if __name__ == '__main__':

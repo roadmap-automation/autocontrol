@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import os
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -81,8 +82,27 @@ def load_persistent_cfg() -> DataConfig:
     return DataConfig(**filtered)
 
 
-def save_persistent_cfg(data: DataConfig) -> None:
+def save_persistent_cfg(data: dict | DataConfig) -> None:
+
+    def _make_json_safe(obj):
+        # Ensure all values are JSON-safe
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, dict):
+            return {k: _make_json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_make_json_safe(v) for v in obj]
+        return obj
+
     cfg_path = default_config_path()
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cfg_path.write_text(json.dumps(asdict(data), indent=2))
+    # Normalize input
+    if is_dataclass(data):
+        data = asdict(data)
+
+    safe_data = _make_json_safe(data)
+
+    cfg_path.write_text(json.dumps(safe_data, indent=2))
