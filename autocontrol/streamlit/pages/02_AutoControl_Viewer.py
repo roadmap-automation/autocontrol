@@ -19,6 +19,10 @@ if not st.session_state["data_folders_ready"]:
     st.info("Files and Folders not set up. Please visit the File System tab.")
     st.stop()
 
+if st.session_state.cfg.autocontrol_startup:
+    st.info("Autocontrol startup. Please visit the File System tab.")
+    st.stop()
+
 def click_pause_button():
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
