@@ -1,5 +1,3 @@
-from support import app_functions
-
 from roadmap_datamanager import datalad_gin_api as dgapi
 from roadmap_datamanager import configuration as dmc
 from autocontrol.support import configuration
@@ -12,18 +10,15 @@ st.set_page_config(layout="wide")
 def main(storage_path=None, atc_address=None):
 
     st.session_state.cfg = configuration.load_persistent_cfg()
-
     st.session_state.cfg.atc_address = atc_address or st.session_state.cfg.atc_address or '5004'
+    st.session_state["user_selection_enabled"] = True
 
     if storage_path is None:
         # use datamanager functionality to select paths and use Datalad / Remote storage integration
         st.session_state.storage_path_overwrite = False
-        # st.session_state.cfg.autocontrol_dir = None
-        app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
+        st.session_state.cfg.data_folders_ready = False
         print("No storage path provided. Select experiment in the File System tab of the Streamlit App and "
               "authorize the autocontrol server startup manually.")
-        # storage path is contained in st.session_state.autocontrol_dir after setup_app_dirs()
-        # storage_path = st.session_state.autocontrol_dir
     else:
         # check if provided storage path is within a Datalad repository
         node_type, _ = dgapi.get_dataset_nodetype(storage_path)
@@ -39,13 +34,13 @@ def main(storage_path=None, atc_address=None):
             configuration.save_persistent_cfg(st.session_state.cfg)
         elif node_type in ['root', 'project', 'campaign', 'experiment']:
             st.error("Storage path provided at startup is at a dataset level of a Datamanager Repository. The"
-                     "storage path should be at a below-experiment level. This location interferes with the"
+                     "storage path should be at a below-experiment level. This location interferes with "
                      "Autocontrol functionality.")
             st.session_state.data_folders_ready = False
             st.stop()
         else:
             print("Storage path provided to autocontrol is within existing Datamanager Repository.")
-            print("Datalad and Remote storage capabilities available via the Streamlit App.")
+            print("Datalad and Remote storage capabilities available via the Streamlit App. User selection disabled.")
             # initialize a datamanager instance just for bootstrapping, thereby updating the config
             st.session_state.cfg = dmc.bootstrap_config(
                 path=storage_path,
@@ -53,7 +48,8 @@ def main(storage_path=None, atc_address=None):
             )
             st.session_state.storage_path_overwrite = False
             st.session_state.cfg.autocontrol_dir = str(storage_path)
-            app_functions.setup_app_dirs(create_dirs=False, init_datalad=False)
+            st.session_state["data_folders_ready"] = True
+            st.session_state["user_selection_enabled"] = False
             # authorize autocontrol server startup
             st.session_state.cfg.autocontrol_startup = False
             configuration.save_persistent_cfg(st.session_state.cfg)
