@@ -2,18 +2,15 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-
 import streamlit as st
 
 from roadmap_datamanager.gui import streamlit_components as stc
-
 from autocontrol.support import configuration
 
 st.set_page_config(layout="wide")
 
 def start_server():
     st.session_state.cfg.autocontrol_startup = False
-    Path(st.session_state.cfg.autocontrol_dir).mkdir(parents=True, exist_ok=True)
     configuration.save_persistent_cfg(st.session_state.cfg)
 
 
@@ -38,10 +35,6 @@ else:
     if st.session_state.user_selection_enabled:
         if 'user_root_dir' not in st.session_state:
             st.session_state.user_root_dir = Path.home() / "app_data"
-    else:
-        # user provided an autocontrol directory that resides in an existing datalad  tree, but we have no way of
-        # knowing whether there are multiple users -> chose name of dm_root as user and make it fixed.
-        st.session_state.user_root_dir = cfg.dm_root.parent
 
     cfg= stc.UI_fragment_user(
         cfg,
@@ -65,34 +58,21 @@ else:
         st.stop()
 
 # -------------------- Storage Directory --------------------------------------
-st.write("""
-## Autocontrol Storage Directory
-""")
-exp_dir = root = st.session_state.cfg.dm_root / st.session_state.cfg.project / st.session_state.cfg.campaign
-exp_dir = exp_dir / st.session_state.cfg.experiment
-autocontrol_dir = exp_dir/ 'autocontrol'
-if st.session_state.cfg.autocontrol_dir is None:
-    autocontrol_dir.mkdir(parents=True, exist_ok=True)
-    st.session_state.cfg.autocontrol_dir = autocontrol_dir
-    configuration.save_persistent_cfg(st.session_state.cfg)
-
-col7, col8 = st.columns([7, 3])
-with col7:
-    st.success(f"Autocontrol storage directory: {st.session_state.cfg.autocontrol_dir}")
-with col8:
-    if cfg.autocontrol_startup:
-        st.button("Authorize Autocontrol Server Startup", type='primary', on_click=start_server)
-    else:
-        stc.file_browser_button(Path(st.session_state.cfg.autocontrol_dir))
-
-if autocontrol_dir.is_dir():
-    st.text("The autocontrol storage folder is not archived due to frequent in-place modification. ")
-    if st.button("Make an archived copy of the storage directory"):
-        archive_dir = exp_dir / "autocontrol_archive"
-        if archive_dir.exists():
-            shutil.rmtree(archive_dir)
-
-        shutil.copytree((exp_dir / 'autocontrol'), (exp_dir / 'autocontrol_archive'))
+cfg, rerun = stc.UI_fragment_app_storage(
+    cfg=cfg,
+    storage_folders=['autocontrol'],
+    gitignore_folders=['autocontrol'],
+    special_action=start_server,
+    special_action_arguments=None,
+    special_action_label='Authorize Autocontrol Server Startup',
+    special_action_enabled=st.session_state.cfg.autocontrol_startup
+)
+st.session_state.cfg = cfg
+configuration.save_persistent_cfg(st.session_state.cfg)
+st.session_state.cfg.autocontrol_dir = (Path(cfg.dm_root).expanduser().resolve() / cfg.project / cfg.campaign /
+                                        cfg.experiment / 'autocontrol')
+if rerun:
+    st.rerun()
 
 # --------------------- Datalad UI fragment --------------------------
 if st.session_state.storage_path_overwrite:

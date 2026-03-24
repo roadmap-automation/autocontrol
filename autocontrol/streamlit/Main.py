@@ -3,6 +3,7 @@ from roadmap_datamanager import configuration as dmc
 from autocontrol.support import configuration
 
 import argparse
+from pathlib import Path
 import streamlit as st
 
 st.set_page_config(layout="wide")
@@ -48,6 +49,9 @@ def main(storage_path=None, atc_address=None):
             )
             st.session_state.storage_path_overwrite = False
             st.session_state.cfg.autocontrol_dir = str(storage_path)
+            # user provided an autocontrol directory that resides in an existing datalad tree, but we have no way of
+            # knowing whether there are multiple users -> chose name of dm_root as user and make it fixed.
+            st.session_state.user_root_dir = Path(st.session_state.cfg.dm_root).expanduser().resolve().parent
             st.session_state["data_folders_ready"] = True
             st.session_state["user_selection_enabled"] = False
             # authorize autocontrol server startup
