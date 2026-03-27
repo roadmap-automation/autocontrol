@@ -10,5 +10,6 @@ graphviz
 python-graphviz
 psutil
 pydantic
+roadmap_datamanager
 setuptools
 autocontrol
