@@ -1,7 +1,10 @@
 import autocontrol.server as server
+from autocontrol.support import configuration
+
 import json
 import multiprocessing
 import os
+from pathlib import Path
 import platform
 import psutil
 import requests
@@ -80,35 +83,63 @@ def resume_queue(url=None, port=None):
 
 
 def start_streamlit_viewer(storage_path, server_address, server_port):
-    viewer_path = os.path.join(os.path.dirname(__file__), 'viewer.py')
+    viewer_path = Path(__file__).parent.parent / 'streamlit' / 'Main.py'
     server_addr = server_address + ':' + str(server_port)
-    _ = subprocess.run(['streamlit', 'run', viewer_path, '--', '--storage_dir', storage_path, '--atc_address',
-                        server_addr],)
+    if storage_path is not None:
+        _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--storage_dir', storage_path, '--atc_address',
+                            server_addr],)
+    else:
+        _ = subprocess.run(['streamlit', 'run', str(viewer_path), '--', '--atc_address', server_addr], )
 
 
-def start(portnumber=5004, storage_path=None):
+def start(portnumber=5004, storage_path=None, delete_contents=False):
     """
-    Starts the autocontrol server.
-    :param portnumber: port number of the server
-    :param storage_path: directory to save task databases
+    Starts the autocontrol server. If a storage path is provided, this path will be used to store the autocontrol
+    files. If not, the File System dialog of the autocontrol app should be used to set a storage path, which will
+    be the selected Experiment folder / 'autocontrol' by default.
+    :param portnumber: (int) port number of the server
+    :param storage_path: (str | Path) directory to save task databases
+    :param delete_contents: (bool) whether to delete contents from the storage folder
     :return: no return value
     """
-    print('Preparing test directory')
+    print('Checking autocontrol storage directory ...')
     if storage_path is None:
-        storage_path = os.path.join(os.getcwd(), "atc_test")
-        print("Defaulting to current directory for test directory: {}".format(storage_path))
+        print("No Autocontrol storage path provided. Use Autocontrol File System Tab to select directory.")
     else:
-        print("Path for test directory is {}".format(storage_path))
-    if not os.path.isdir(storage_path):
-        os.mkdir(storage_path)
+        storage_path = Path(storage_path).expanduser().resolve()
+        print("Autocontrol storage Path provided: {}".format(storage_path))
+        storage_path.mkdir(parents=True, exist_ok=True)
 
-    for filename in os.listdir(storage_path):
-        file_path = os.path.join(storage_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-        except Exception as e:
-            print(f'Failed to delete {file_path}. Reason: {e}')
+        if delete_contents:
+            (storage_path / 'active_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'history_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'priority_queue.sqlite3').unlink(missing_ok=True)
+            (storage_path / 'channel_po.json').unlink(missing_ok=True)
+
+    # ------------------ Starting Streamlit Monitor----------------------------------
+    # set flag in autocontrol configuration that startup is in progress (gives the user the chance to potentially
+    # select an autocontrol storage directory
+    config = configuration.load_persistent_cfg()
+    config.autocontrol_startup = True
+    configuration.save_persistent_cfg(config)
+
+    print("Starting Streamlit Viewer with storage path: {}".format(storage_path))
+    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path, 'http://localhost',
+                                                                           portnumber))
+    process.start()
+
+    # ------------------ Starting Flask Server----------------------------------
+    # waiting for the autocontrol app to release the startup flag
+    sleep_counter = 0
+    while True:
+        time.sleep(2)
+        sleep_counter += 1
+        config = configuration.load_persistent_cfg()
+        if not config.autocontrol_startup:
+            storage_path=config.autocontrol_dir
+            break
+        if sleep_counter % 10 == 0:
+            print("Waiting for the Autocontrol App to authorize server startup ...")
 
     hostname = socket.gethostname()
     try:
@@ -119,18 +150,8 @@ def start(portnumber=5004, storage_path=None):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-    # ------------------ Starting Flask Server----------------------------------
-    print("Starting Flask Server")
+    print("Starting Flask Server ...")
     server.start_server(hostname='localhost', port=portnumber, storage_path=storage_path)
-
-    print('Waiting for 2 seconds.')
-    time.sleep(5)
-
-    # ------------------ Starting Streamlit Monitor----------------------------------
-    print("Starting Streamlit Viewer with storage path: {}".format(storage_path))
-    process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path, 'http://localhost',
-                                                                           portnumber))
-    process.start()
 
 
 def stop(portnumber=5004, wait_for_queue_to_empty=True):

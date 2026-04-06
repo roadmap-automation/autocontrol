@@ -1,7 +1,6 @@
-import autocontrol.support
 from autocontrol import task_struct
-from autocontrol import support
-import argparse
+from autocontrol.support import support
+
 import datetime
 import graphviz
 import json
@@ -12,37 +11,26 @@ import requests
 import sqlite3
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
-import time
 import uuid
 
 st.set_page_config(layout="wide")
 
-if 'pause_button' not in st.session_state:
-    st.session_state.pause_button = False
-if 'reset_all' not in st.session_state:
-    st.session_state.reset_all = False
-if 'restart_all' not in st.session_state:
-    st.session_state.restart_all = False
-if 'priority_queue' not in st.session_state:
-    st.session_state.priority_queue = None
-if 'active_queue' not in st.session_state:
-    st.session_state.active_queue = None
-if 'history_queue' not in st.session_state:
-    st.session_state.history_queue = None
-if 'file_mod_time' not in st.session_state:
-    st.session_state.file_mod_time = None
-if 'poll_counter' not in st.session_state:
-    st.session_state.poll_counter = None
+if not st.session_state["data_folders_ready"]:
+    st.info("Files and Folders not set up. Please visit the File System tab.")
+    st.stop()
 
+if st.session_state.cfg.autocontrol_startup:
+    st.info("Autocontrol startup. Please visit the File System tab.")
+    st.stop()
 
 def click_pause_button():
     # communicate with atc server and change state accordingly
     if not st.session_state.pause_button:
-        url = st.session_state.atc_address # + '/pause'
-        response = autocontrol.support.pause_queue(url=url)
+        url = st.session_state.cfg.atc_address # + '/pause'
+        response = support.pause_queue(url=url)
     else:
-        url = st.session_state.atc_address # + '/resume'
-        response = autocontrol.support.resume_queue(url=url)
+        url = st.session_state.cfg.atc_address # + '/resume'
+        response = support.resume_queue(url=url)
 
     if response.status_code == 200:
         st.session_state.pause_button = not st.session_state.pause_button
@@ -52,7 +40,7 @@ def click_reset_button():
     if not st.session_state.reset_all:
         st.session_state.reset_all = True
     else:
-        url = st.session_state.atc_address + '/reset'
+        url = st.session_state.cfg.atc_address + '/reset'
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers)
         if response.status_code == 200:
@@ -63,14 +51,13 @@ def click_restart_button():
     if not st.session_state.restart_all:
         st.session_state.restart_all = True
     else:
-        url = st.session_state.atc_address + '/restart'
+        url = st.session_state.cfg.atc_address + '/restart'
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers)
         if response.status_code == 200:
             st.session_state.restart_all = False
 
 
-@st.cache_data
 def analyze_df_for_device_pairs(df):
     filtered_df = df[df['task_type'] == 'transfer']
     pairs_df = filtered_df[['device', 'target_device']].dropna()
@@ -215,25 +202,28 @@ def replace_priority_with_int(df):
 
 def retrieve_md_key(row, key_strs=('submission_response',)):
     status = ''
-    taskmd = subtaskmd = False
-    task = row['task']
-    if task is not None:
-        # there is ever only one item in this tuple
-        task = task_struct.Task.parse_raw(task)
+    taskmd = False
+    task_json = row['task']
+    if task_json is None:
+        return status
+    task = task_struct.Task.model_validate_json(task_json)
     if task.md is not None:
         for key_str in key_strs:
             if key_str in task.md:
                 if not taskmd:
                     status += 'Task status:\n'
                     taskmd = True
-                status += key_str + ': ' + task.md[key_str] + '\n'
+                status += f'{key_str}: {task.md[key_str]}\n'
     for i, subtask in enumerate(task.tasks):
+        subtaskmd = False
+        if subtask.md is None:
+            continue
         for key_str in key_strs:
             if key_str in subtask.md:
                 if not subtaskmd:
-                    status += 'Subtask {} status:\n'.format(i)
+                    status += f'Subtask {i} status:\n'
                     subtaskmd = True
-                status += key_str + ': ' + subtask.md[key_str] + '\n'
+                status += f'{key_str}: {subtask.md[key_str]}\n'
     return status
 
 
@@ -300,7 +290,6 @@ def render_data(data, color, filename, identifier_list, channel_po, split_by_dev
     g.render(filename=os.path.join(storage_path, filename), format='png')
 
 
-@st.cache_data
 def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifier_list, channel_po,
                       storage_path=''):
     render_data(pdata, color='lightblue', filename='priority_queue', identifier_list=identifier_list,
@@ -314,80 +303,61 @@ def render_all_queues(pdata, adata, hdata, cpodata, edges, filemodflag, identifi
 
 # ---------------------------------------------------------------------------------------------------------------------
 # --------------------------------------------- Streamlit Page Start --------------------------------------------------
+count = st_autorefresh(interval=5000, limit=None, key='pcounter')
 
+storage_path = st.session_state.cfg.autocontrol_dir
+identifier_list = []
 
-def main(storage_path=None, atc_address=None):
-    count = st_autorefresh(interval=5000, limit=None, key="pcounter")
+fmt = file_mod_time(storage_path)
+if st.session_state.file_mod_time is None or st.session_state.file_mod_time != fmt:
+    st.session_state.file_mod_time = fmt
+    get_new_data(storage_path=storage_path, identifier_list=identifier_list)
 
-    st.session_state.atc_address = atc_address
-    identifier_list = []
-    if storage_path is None:
-        cfd = os.path.dirname(os.path.abspath(__file__))
-        storage_path = os.path.join(cfd, '..', 'test')
+priority_queue = st.session_state.priority_queue
+active_queue = st.session_state.active_queue
+history_queue = st.session_state.history_queue
 
-    fmt = file_mod_time(storage_path)
-    if st.session_state.file_mod_time is None or st.session_state.file_mod_time != fmt:
-        st.session_state.file_mod_time = fmt
-        get_new_data(storage_path=storage_path, identifier_list=identifier_list)
+st.title('Autocontrol Viewer')
 
-    priority_queue = st.session_state.priority_queue
-    active_queue = st.session_state.active_queue
-    history_queue = st.session_state.history_queue
+ui_fragment()
 
-    st.title('Autocontrol Viewer')
+# create flow chart via graphviz
+# with st.expander('Task Diagram', expanded=True):
+st.write('Tasks')
+st.image(os.path.join(storage_path, 'priority_queue.png'))
+st.image(os.path.join(storage_path, 'active_queue.png'))
+st.image(os.path.join(storage_path, 'history_queue.png'))
 
-    ui_fragment()
+# with st.expander('Sample Occupancy Diagram'):
+st.write('Sample Occupancy')
+st.image(os.path.join(storage_path, 'cpo_data.png'))
 
-    # create flow chart via graphviz
-    # with st.expander('Task Diagram', expanded=True):
-    st.write('Tasks')
-    st.image(os.path.join(storage_path, 'priority_queue.png'))
-    st.image(os.path.join(storage_path, 'active_queue.png'))
-    st.image(os.path.join(storage_path, 'history_queue.png'))
+# visualize dataframes in tables
+co_list = ("priority", "sample_number", "task_type", "device", "channel", "status", "task")
+co_conf = {
+    "priority": st.column_config.NumberColumn("priority", width='small'),
+    "sample_number": st.column_config.NumberColumn("sample", width='small'),
+    "task_type": st.column_config.TextColumn("task type", width='small'),
+    "device": st.column_config.TextColumn("device", width='small'),
+    "channel": st.column_config.NumberColumn("channel", width='small'),
+    "task": st.column_config.Column("task", width='large'),
+}
+co_conf_priority = co_conf | {"status": st.column_config.TextColumn("submission status", width='small')}
+co_conf_activity = co_conf | {"status": st.column_config.TextColumn("execution status", width='small')}
+co_conf_history = co_conf | {"status": None}
 
-    # with st.expander('Sample Occupancy Diagram'):
-    st.write('Sample Occupancy')
-    st.image(os.path.join(storage_path, 'cpo_data.png'))
+st.text('Queued Jobs:')
+st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority, width='stretch',
+             hide_index=True)
+st.text('Active Jobs:')
+st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, width='stretch',
+             hide_index=True)
+st.text('Finished Jobs (limited to the last 50):')
+st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, width='stretch',
+             hide_index=True)
 
-    # visualize dataframes in tables
-    co_list = ("priority", "sample_number", "task_type", "device", "channel", "status", "task")
-    co_conf = {
-        "priority": st.column_config.NumberColumn("priority", width='small'),
-        "sample_number": st.column_config.NumberColumn("sample", width='small'),
-        "task_type": st.column_config.TextColumn("task type", width='small'),
-        "device": st.column_config.TextColumn("device", width='small'),
-        "channel": st.column_config.NumberColumn("channel", width='small'),
-        "task": st.column_config.Column("task", width='large'),
-    }
-    co_conf_priority = co_conf | {"status": st.column_config.TextColumn("submission status", width='small')}
-    co_conf_activity = co_conf | {"status": st.column_config.TextColumn("execution status", width='small')}
-    co_conf_history = co_conf | {"status": None}
-
-    st.text('Queued Jobs:')
-    st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority, use_container_width=True,
-                 hide_index=True)
-    st.text('Active Jobs:')
-    st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity, use_container_width=True,
-                 hide_index=True)
-    st.text('Finished Jobs (limited to the last 50):')
-    st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history, use_container_width=True,
-                 hide_index=True)
-
-    if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
-        st.session_state.poll_counter = count
-        if st.session_state.restart_all or st.session_state.reset_all:
-            st.session_state.restart_all = False
-            st.session_state.reset_all = False
-
-
-if __name__ == '__main__':
-    # sys.argv = sys.argv[:1] + sys.argv[2:]  # Streamlit adds extra args; this line removes them
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--storage_dir', type=str, default=os.getcwd(), help='Path to storage directory')
-    parser.add_argument('--atc_address', type=str, default='http://localhost:5000',
-                        help='Address of atc server')
-    args = parser.parse_args()
-    storage_dir = args.storage_dir
-    atc_address = args.atc_address
-
-    main(storage_path=storage_dir, atc_address=atc_address)
+if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
+    st.session_state.poll_counter = count
+    if st.session_state.restart_all or st.session_state.reset_all:
+        st.session_state.restart_all = False
+        st.session_state.reset_all = False

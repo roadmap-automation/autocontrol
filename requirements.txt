@@ -4,10 +4,12 @@ flask
 werkzeug
 sqlalchemy
 streamlit
-streamlit-autorefresh
+streamlit_autorefresh
 pandas
 graphviz
+python-graphviz
 psutil
 pydantic
+roadmap_datamanager
 setuptools
 autocontrol

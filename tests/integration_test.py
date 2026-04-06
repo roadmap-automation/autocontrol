@@ -1,6 +1,6 @@
 import autocontrol.task_struct as tsk
-import autocontrol.support
-import os
+from autocontrol.support import support
+
 import time
 import uuid
 
@@ -17,7 +17,7 @@ def submit_sample_block(qcmd_channel=None):
             md={'description': '{} preparation'.format(str(sample_id))},
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id,
@@ -34,7 +34,7 @@ def submit_sample_block(qcmd_channel=None):
             )
         ]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
 
     task = tsk.Task(
         sample_id=sample_id,
@@ -46,19 +46,20 @@ def submit_sample_block(qcmd_channel=None):
         )]
     )
     # returns the submission info for this task only for testing purposes
-    return autocontrol.support.submit_task(task, port)
+    return support.submit_task(task, port)
 
 
 def integration_test():
     print('Starting integration test')
 
-    print('Preparing test directory')
-    cfd = os.path.dirname(os.path.abspath(__file__))
-    storage_path = os.path.join(cfd, '..', 'test_storage')
-
     # ----------- Starting Flask Server and Streamlit Viewer ---------------------------
-    autocontrol.support.start(portnumber=port, storage_path=storage_path)
-
+    # test startup w/ providing a storage path
+    # import tempfile
+    # print('Preparing test directory')
+    # storage_path = tempfile.mkdtemp()
+    # support.start(portnumber=port, storage_path=storage_path, delete_contents=True)
+    # test startup w/o providing a storage path
+    support.start(portnumber=port, storage_path=None, delete_contents=True)
     # ------------------ Submitting Task ----------------------------------
 
     task = tsk.Task(
@@ -73,7 +74,7 @@ def integration_test():
             md={'description': 'QCMD init'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
     time.sleep(0.1)
 
     task = tsk.Task(
@@ -87,33 +88,33 @@ def integration_test():
             md={'description': 'lh init'}
         )]
     )
-    autocontrol.support.submit_task(task, port)
+    support.submit_task(task, port)
     time.sleep(0.1)
 
     measure_task_response_1 = submit_sample_block(qcmd_channel=0)
     measure_task_response_2 = submit_sample_block(qcmd_channel=0)
     measure_task_response_3 = submit_sample_block(qcmd_channel=1)
 
-    autocontrol.support.pause_queue(port=port)
+    support.pause_queue(port=port)
     _ = input("Paused queue execution. Please press enter to continue cancelling measurement task 3.")
 
     task_id = measure_task_response_3['task_id']
-    response = autocontrol.support.cancel_task(task_id, port=port)
+    response = support.cancel_task(task_id, port=port)
     print(response)
 
     _ = input("Task Cancelled. Please press enter to continue with a resubmission of measurement task 2.")
     task_id = measure_task_response_2['task_id']
-    response = autocontrol.support.resubmit_task(task_id=task_id, port=port)
+    response = support.resubmit_task(task_id=task_id, port=port)
     print(response)
 
     _ = input("Task Resubmitted. Please press enter to continue queue execution.")
-    autocontrol.support.resume_queue(port=port)
+    support.resume_queue(port=port)
 
     # Wait for user input
     _ = input("Please enter to stop the autocontrol server.")
 
     # ------------------ Stopping Flask Server ----------------------------------
-    autocontrol.support.stop(portnumber=port)
+    support.stop(portnumber=port)
     time.sleep(5)
 
     _ = input("Please enter to stop Streamlit and all processes.")
@@ -124,4 +125,4 @@ def integration_test():
 
 if __name__ == '__main__':
     integration_test()
-    autocontrol.support.terminate_processes()
+    support.terminate_processes()

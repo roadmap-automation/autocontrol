@@ -8,7 +8,7 @@
       <excludeFolder url="file://$MODULE_DIR$/build" />
       <excludeFolder url="file://$MODULE_DIR$/dist" />
     </content>
-    <orderEntry type="jdk" jdkName="autocontrol" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="$USER_HOME$/miniforge3/envs/autocontrol" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">

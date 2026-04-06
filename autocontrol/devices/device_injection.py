@@ -1,8 +1,6 @@
-import autocontrol.status
 from autocontrol.status import Status
-from autocontrol.device import Device
+from devices.device import Device
 import json
-import time as ttime
 
 
 class injection_device(Device):
