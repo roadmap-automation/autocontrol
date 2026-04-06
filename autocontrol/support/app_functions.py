@@ -18,6 +18,8 @@ def setup_app_dirs(
     # check if canonical app working directories exist
     if user_root_dir is None:
         user_root_dir = Path.home() / "app_data"
+    else:
+        user_root_dir = Path(user_root_dir).expanduser().resolve()
     user_root_dir.mkdir(parents=True, exist_ok=True)
     st.session_state['user_root_dir'] = user_root_dir
 
