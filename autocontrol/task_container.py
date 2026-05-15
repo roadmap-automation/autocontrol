@@ -105,7 +105,7 @@ class TaskContainer:
             SELECT task FROM task_table
             WHERE (sample_number = ?)
             """
-            cursor.execute(query, sample_number)
+            cursor.execute(query, (sample_number,))
         else:
             query = """SELECT task FROM task_table"""
             cursor.execute(query)

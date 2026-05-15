@@ -1,5 +1,5 @@
 from autocontrol.status import Status
-from devices.device import Device
+from autocontrol.devices.device import Device
 import json
 
 

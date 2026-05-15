@@ -21,6 +21,11 @@ class Device(object):
         # are disabled, because any material will be pushed through and out.
         self.passive = False
 
+        # When True, standard_task() skips the HTTP POST and returns SUCCESS
+        # immediately.  Actual broker dispatch is handled by atc.task_dispatch_hook
+        # which has access to both the Task and TaskData objects.
+        self.broker_mode = False
+
     def communicate(self, command, data=None, method='POST'):
         """
         Communicate with device and return response via HTTP POST or GET. Can be replaced by subclasses.
@@ -63,6 +68,16 @@ class Device(object):
         :return: autocontrol status
         """
         if task_type == TaskType.INIT:
+            # In broker mode, set local device metadata and return immediately.
+            # The actual INIT command is dispatched to the device via the broker
+            # by atc.task_dispatch_hook.  We must set number_of_channels here so
+            # that atc.post_process_task() can build channel_po correctly.
+            if self.broker_mode and not self.test:
+                self.address = task.device_address
+                self.channel_mode = task.channel_mode
+                noc = task.number_of_channels
+                self.number_of_channels = int(noc) if (noc is not None and noc >= 2) else 1
+                return Status.SUCCESS, 'Init dispatched via broker.'
             status, resp = self.init(task)
             return status, resp
 
@@ -110,7 +125,7 @@ class Device(object):
         Retrieves the status of a device and its channels
         :return: (Status, Status, [Status]) request status, device status, list of channel status
         """
-        if self.test:
+        if self.test or self.broker_mode:
             return Status.SUCCESS, Status.IDLE, [Status.IDLE] * self.number_of_channels
 
         request_status, device_and_channel_status = self.get_status()
@@ -140,18 +155,12 @@ class Device(object):
         self.address = subtask.device_address
         self.channel_mode = subtask.channel_mode
 
-        # generic response for testing
-        if self.test:
-            if subtask.number_of_channels is not None:
-                noc = subtask.number_of_channels
-                if noc is None or noc < 2:
-                    noc = 1
-                else:
-                    noc = int(noc)
-            else:
-                noc = 1
+        if self.test or self.broker_mode:
+            noc = subtask.number_of_channels
+            noc = int(noc) if (noc is not None and noc >= 2) else 1
             self.number_of_channels = noc
-            return Status.SUCCESS, 'Simulated device initialized.'
+            msg = 'Simulated device initialized.' if self.test else 'Init dispatched via broker.'
+            return Status.SUCCESS, msg
 
         return Status.INVALID, 'Method not implemented'
 
@@ -178,6 +187,9 @@ class Device(object):
     def standard_task(self, subtask, endpoint='/SubmitTask'):
         if self.test:
             return self.standard_test_response(subtask)
+
+        if self.broker_mode:
+            return Status.SUCCESS, 'Will be dispatched via broker.'
 
         request_status, device_status = self.get_device_status()
         if request_status != Status.SUCCESS:

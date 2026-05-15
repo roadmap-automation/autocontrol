@@ -113,6 +113,17 @@ class autocontrol:
         # run control
         self.paused = False
 
+        # Optional hook called after a device object is created in pre_process_init().
+        # Signature: device_created_hook(device_object) -> None
+        # Used by server.py to set device.broker_mode = True on new devices.
+        self.device_created_hook = None
+
+        # Optional hook called inside process_task() after each subtask is
+        # successfully dispatched to a device.
+        # Signature: task_dispatch_hook(task: Task, subtask: TaskData) -> None
+        # Used by BrokerWorker to publish command.<device_id>.submit_task.
+        self.task_dispatch_hook = None
+
     def check_task(self, task):
         """
         Checks if a particular task has been completed and is ready for collection.
@@ -289,6 +300,9 @@ class autocontrol:
         self.devices[device_name]['device_type'] = device_type
         self.devices[device_name]['device_address'] = device_address
         self.devices[device_name]['sample_mixing'] = sample_mixing
+
+        if self.device_created_hook is not None:
+            self.device_created_hook(device_object)
 
         return True, task, 'Success.'
 
@@ -550,6 +564,8 @@ class autocontrol:
                 subtask.md['submission_device_response'] = resp
                 if status != Status.SUCCESS:
                     task_success = False
+                elif self.task_dispatch_hook is not None:
+                    self.task_dispatch_hook(task, subtask)
 
             # TODO: There is a more elaborate exception handling required in case that one of the two devices ivolved
             #   in a transfer is returning a non-success status. For this, we need to implement abort methods and need

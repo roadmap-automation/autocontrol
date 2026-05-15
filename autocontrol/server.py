@@ -3,10 +3,10 @@ from flask import Flask
 from flask import abort, request
 import json
 import os
-from pydantic import ValidationError
 from threading import Thread
 from typing import Optional
 from autocontrol.task_struct import Task
+from autocontrol.broker_worker import BrokerWorker
 import time
 from werkzeug.serving import run_simple
 
@@ -15,31 +15,77 @@ app = Flask(__name__)
 app_shutdown = False
 # intialize global variables
 atc: Optional[autocontrol_atc.autocontrol] = None
+broker: Optional[BrokerWorker] = None
 bg_thread: Optional[Thread] = None
 
 
 def background_task():
+
     """
-    Flask server background task comprising an infinite loop executing one task of the Bluesky queue at a time.
+    Flask server background task comprising an infinite loop executing one task of the priority queue at a time.
+
+    Completion detection is broker-driven: device modules publish task.completed / task.failed events which the
+    BrokerWorker consumer places in broker.completion_events.  This loop drains that queue and calls
+    atc.post_process_task() instead of polling device HTTP endpoints.
+
     :return: No return value.
     """
-    global atc
+    global atc, broker
 
     while not app_shutdown:
         wait_time = 5
-        # check on all active tasks and handle if they are finished
-        if atc.update_active_tasks():
-            # one task was succesfully collected, let's not wait that long until checking queue again
-            wait_time = 0.1
-        # Try to execute one item from the scheduling queue. If all resources are busy or the queue is empty,
-        # the method does nothing. We do not need to keep track of this here and will just reattempt again until
-        # the server is stopped.
-        if not atc.paused:
-            if atc.queue_execute_one_item():
-                # one task was succesfully submitted, let's not wait that long until checking queue again
+
+        # Drain device completion events from the broker consumer (replaces atc.update_active_tasks() polling)
+        while not broker.completion_events.empty():
+            try:
+                task_id, status, envelope = broker.completion_events.get_nowait()
+            except Exception:
+                break
+            task = atc.active_tasks.get_task_by_id(task_id)
+            if task is None:
+                continue
+            if status == "completed":
+                if atc.post_process_task(task):
+                    broker.publish_task_completed(task)
+                    _publish_channel_events_after_completion(task)
+                    wait_time = 0.1
+            else:
+                error = envelope.payload.get("error", "Device reported failure.")
+                broker.publish_task_failed(task, error)
                 wait_time = 0.1
 
-        time.sleep(wait_time)
+        # Try to execute one item from the scheduling queue. If all resources are busy or the queue is empty,
+        # the method does nothing. atc.task_dispatch_hook fires inside queue_execute_one_item() and handles
+        # the broker publish + audit log for each dispatched subtask.
+        if not atc.paused:
+            try:
+                if atc.queue_execute_one_item():
+                    wait_time = 0.1
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Unhandled exception in queue_execute_one_item(); dispatch loop continuing."
+                )
+
+        broker.wakeup.wait(timeout=wait_time)
+        broker.wakeup.clear()
+
+
+def _publish_channel_events_after_completion(task: Task) -> None:
+    """Publish channel lock/release broker events mirroring the channel_po changes made in post_process_task."""
+    from autocontrol.task_struct import TaskType
+    if task.task_type == TaskType.TRANSFER:
+        src = task.tasks[0]
+        if src.channel is not None:
+            broker.publish_channel_released(src.device, src.channel)
+        if len(task.tasks) > 1:
+            dst = task.tasks[-1]
+            if dst.channel is not None:
+                broker.publish_channel_locked(dst.device, dst.channel)
+    elif task.task_type in (TaskType.PREPARE, TaskType.MEASURE):
+        subtask = task.tasks[0]
+        if subtask.channel is not None:
+            broker.publish_channel_locked(subtask.device, subtask.channel)
 
 
 @app.route('/get_task_status/<task_id>', methods=['GET'])
@@ -226,8 +272,24 @@ def start_server(hostname='localhost', port=5003, storage_path=None):
         storage_path = os.getcwd()
 
     # initialize autocontrol API
-    global atc
+    global atc, broker
     atc = autocontrol_atc.autocontrol(storage_path=storage_path)
+
+    # Start broker worker and wire up hooks
+    broker = BrokerWorker(atc)
+
+    # Enable broker mode on each device as it is initialized so that
+    # standard_task() skips the HTTP POST.
+    def _on_device_created(device_object) -> None:
+        device_object.broker_mode = True
+
+    atc.device_created_hook = _on_device_created
+
+    # task_dispatch_hook is called by process_task() after each successful
+    # subtask dispatch and publishes command.<device_id>.submit_task + audit log.
+    atc.task_dispatch_hook = broker.task_dispatch_hook
+
+    broker.start()
 
     # start the background thread
     global bg_thread
@@ -259,142 +321,6 @@ def stop_server():
         print('Shutting down server after waiting for queue to empty.')
         response = shutdown_server(wait_for_queue_to_empty=data['wait_for_queue_to_empty'])
     return response
-
-
-@app.route('/cancel', methods=['POST'])
-def task_cancel():
-    """
-    POST request to cancel a submitted task from the autocontrol priority queue.
-
-    The POST data must contain the following data fields:
-    'task_id' - the id of the task to cancel as a str
-
-    :return: status string
-    """
-    if request.method != 'POST':
-        abort(400, description='Request method is not POST.')
-
-    data = request.get_json()
-    if data is None or not isinstance(data, dict):
-        abort(400, description='No valid data received.')
-
-    if 'task_id' not in data:
-        abort(400, description='No task id provided.')
-
-    if 'include_active_queue' in data and data['include_active_queue']:
-        if 'drop_material' in data and data['drop_material']:
-            drop_material = True
-        else:
-            drop_material = False
-        task = atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=drop_material)
-    else:
-        # submit autocontral cancel request
-        task = atc.queue_cancel(task_id=data['task_id'])
-
-    if task is not None:
-        retdict = {'task': task.json(), 'response': 'Success.'}
-    else:
-        retdict = {'task': None, 'response': 'Task not found'}
-
-    return retdict
-
-
-@app.route('/put', methods=['POST'])
-def task_put():
-    """
-    POST request function that puts one task onto the autocontrol priorty queue.
-
-    The POST data must contain the following data fields:
-    'task':  (task.Task) The task.
-
-    The queue is automatically processed by a background task of the Flask server. Tasks are executed by their priority.
-    The priority is a combination of sample number and submission time. A higher priority is given to samples with lower
-    sample number and earlier submission. Measurement tasks that are preparations can bypass higher priority measurement
-    tasks. Sample numbers are derived from the sample_id upon first submission
-
-    :return: Dictionary with status, sample number and task id entries.
-    """
-    if request.method != 'POST':
-        abort(400, description='Request method is not POST.')
-
-    data = request.get_json()
-    if data is None or not isinstance(data, dict):
-        abort(400, description='No valid data received.')
-
-    # de-serialize the task data into a Task object
-    try:
-        task = Task(**data)
-    except ValidationError:
-        abort(400, description='Failed to deserialize task.')
-
-    # put request in autocontrol queue
-    success, task_id, sample_number, response = atc.queue_put(task=task)
-    retdict = {}
-    retdict['task_id'] = task_id
-    retdict['sample_number'] = sample_number
-    retdict['response'] = response
-
-    if not success:
-        abort(400, description=response)
-
-    return retdict
-
-
-@app.route('/resubmit', methods=['POST'])
-def task_resubmit():
-    """
-    POST request function that resubmits a task from the autocontrol activity queue.
-    :return: Status String
-    """
-    retdict = {}
-    if request.method != 'POST':
-        abort(400, description='Request method is not POST.')
-
-    data = request.get_json()
-    if data is None or not isinstance(data, dict):
-        abort(400, description='No valid data received.')
-
-    if 'task_id' not in data:
-        abort(400, description='No task id provided for original task.')
-
-    if 'task' in data:
-        try:
-            task = Task(**data['task'])
-        except ValidationError:
-            abort(400, description='Failed to deserialize task.')
-    else:
-        task = None
-
-    atc_was_paused = atc.paused
-
-    # pause priority queue execution
-    if not atc_was_paused:
-        atc.paused = True
-
-    old_task = atc.queue_cancel(task_id=data['task_id'], include_active_queue=True, drop_material=False)
-    if old_task is None:
-        abort(400, description='No task for resubmission found.')
-
-    # make sure the resubmitted task has the same priority
-    # channel information will not be copied from the old task and rather newly determined
-    # the task ID of a new task is not changed, and therefore, could be different from the old task
-    if task is not None:
-        task.priority = old_task.priority
-    else:
-        # only sample_id given old task will be resubmitted as is
-        task = old_task
-
-    # resubmit the task
-    success, task_id, sample_number, response = atc.queue_put(task=task)
-    retdict['task_id'] = task_id
-    retdict['sample_number'] = sample_number
-    retdict['response'] = response
-
-    # restart queue if it was not paused before
-    if not atc_was_paused:
-        atc.paused = False
-
-    return retdict
 
 
 @app.route('/queue_inspect', methods=['GET'])

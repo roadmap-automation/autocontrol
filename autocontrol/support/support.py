@@ -174,6 +174,11 @@ def get_task_status(task_id, port):
 
 
 def submit_task(task, port):
+    """
+    Deprecated: POST /put has been replaced by the broker (command.autocontrol.submit_task).
+    This function is preserved for the live_test / integration_test scripts that have not yet
+    been migrated.  New code should publish via the broker client instead.
+    """
     print('\n')
     print('Submitting Task: ' + task.tasks[0].device + ' ' + task.task_type + 'Sample: ' + str(task.sample_id) + '\n')
     url = 'http://localhost:' + str(port) + '/put'
