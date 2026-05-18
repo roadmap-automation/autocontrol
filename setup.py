@@ -9,7 +9,7 @@ setup(
     author='Frank Heinrich',
     author_email='fheinric@andrew.cmu.edu',
     description='Autocontol task scheduler',
-    requires=[
+    install_requires=[
         "numpy", "requests", "flask", "werkzeug", "sqlalchemy", "streamlit", "pandas", "graphviz", "pydantic", "psutil",
         "aio_pika", "asyncpg", "roadmap-broker-client",
     ]
