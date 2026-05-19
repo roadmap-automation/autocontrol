@@ -282,6 +282,10 @@ class autocontrol:
         simulated = subtask.simulated
         sample_mixing = subtask.sample_mixing
 
+        # Already pre-registered via device.registered — skip re-creation.
+        if device_name in self.devices:
+            return True, task, 'Success. Device already registered.'
+
         if device_type == 'injection' or device_type == 'INJECTION':
             device_object = injection_device(name=device_name, address=device_address, simulated=simulated)
         elif device_type == 'lh' or device_type == 'LH':

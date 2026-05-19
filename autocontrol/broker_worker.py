@@ -51,6 +51,7 @@ from roadmap_broker_client.topology import (
 )
 from roadmap_broker_client.topics import (
     CMD_SUBMIT_TASK,
+    DEVICE_REGISTERED,
     INSTRUMENT_EXCHANGE,
     SCHEDULER_CHANNEL_LOCKED,
     SCHEDULER_CHANNEL_RELEASED,
@@ -467,6 +468,64 @@ class BrokerWorker:
         self.wakeup.set()
 
     # ------------------------------------------------------------------
+    # Inbound: device.registered from device services
+    # ------------------------------------------------------------------
+
+    async def _on_device_registered(
+        self, envelope: Envelope, message: aio_pika.abc.AbstractIncomingMessage
+    ) -> None:
+        payload = envelope.payload
+        device_name = payload.get("device_id", "")
+        device_type = payload.get("device_type", "")
+        device_address = payload.get("address", "")
+        num_channels = int(payload.get("num_channels", 1))
+        sample_mixing = bool(payload.get("allow_sample_mixing", True))
+
+        def _register() -> None:
+            from autocontrol.devices.device_injection import injection_device, distribution_device
+            from autocontrol.devices.device_liquid_handler import lh_device
+            from autocontrol.devices.device_qcmd import open_QCMD
+            from autocontrol.devices.device_rinse import rinse_device
+
+            dt = device_type.lower()
+            if dt == 'injection':
+                dev = injection_device(name=device_name, address=device_address)
+            elif dt == 'lh':
+                dev = lh_device(name=device_name, address=device_address)
+            elif dt == 'qcmd':
+                dev = open_QCMD(name=device_name, address=device_address)
+            elif dt == 'rinse':
+                dev = rinse_device(name=device_name, address=device_address)
+            elif dt == 'distribution':
+                dev = distribution_device(name=device_name, address=device_address)
+            else:
+                logger.warning("device.registered: unknown device_type '%s'", device_type)
+                return
+
+            dev.number_of_channels = num_channels
+            if self.atc.device_created_hook is not None:
+                self.atc.device_created_hook(dev)
+
+            self.atc.devices.setdefault(device_name, {})
+            self.atc.devices[device_name]['device_object'] = dev
+            self.atc.devices[device_name]['device_type'] = device_type
+            self.atc.devices[device_name]['device_address'] = device_address
+            self.atc.devices[device_name]['sample_mixing'] = sample_mixing
+
+            # Pre-populate channel_po only if not already present (idempotent).
+            if device_name not in self.atc.channel_po:
+                self.atc.channel_po[device_name] = [None] * num_channels
+                self.atc.store_channel_po()
+
+            logger.info(
+                "device.registered: pre-registered '%s' (%s, %d ch)",
+                device_name, device_type, num_channels,
+            )
+
+        await asyncio.to_thread(_register)
+        self.wakeup.set()
+
+    # ------------------------------------------------------------------
     # Async main loop
     # ------------------------------------------------------------------
 
@@ -507,11 +566,21 @@ class BrokerWorker:
                 routing_key_pattern=TASK_FAILED,
             )
 
+            # Transient queue for device registration — auto-deletes on disconnect
+            # so stale announcements never pile up across restarts.
+            reg_queue = await channel.declare_queue(
+                "autocontrol.device_registrations",
+                durable=False,
+                auto_delete=True,
+            )
+            await reg_queue.bind(self._instrument_exchange, routing_key=DEVICE_REGISTERED)
+
             logger.info("Broker worker running.")
             await asyncio.gather(
                 consume(cmd_queue, self._on_command),
                 consume(completed_queue, self._on_device_event),
                 consume(failed_queue, self._on_device_event),
+                consume(reg_queue, self._on_device_registered),
             )
 
     # ------------------------------------------------------------------
