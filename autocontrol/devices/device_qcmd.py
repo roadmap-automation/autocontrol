@@ -58,6 +58,12 @@ class open_QCMD(Device):
             }
             return Status.SUCCESS, ddict
 
+        if self.broker_mode:
+            # In broker mode the device publishes task.completed with a Claim Check
+            # retrieval_uri.  The raw data is available there on demand; returning
+            # empty success here unblocks post_process_task without an HTTP call.
+            return Status.SUCCESS, {}
+
         status, ret = self.communicate('/GetTaskData', method='GET', data=json.dumps(dict(task_id=str(subtask_id), channel=channel)))
         if status == Status.SUCCESS:
             try:
