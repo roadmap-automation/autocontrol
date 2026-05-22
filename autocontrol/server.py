@@ -46,7 +46,8 @@ def background_task():
                 continue
             if status == "completed":
                 if atc.post_process_task(task):
-                    broker.publish_task_completed(task)
+                    device_payload = envelope.payload if envelope else {}
+                    broker.publish_task_completed(task, device_payload=device_payload)
                     _publish_channel_events_after_completion(task)
                     wait_time = 0.1
             else:

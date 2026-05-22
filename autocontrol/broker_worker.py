@@ -142,8 +142,9 @@ class BrokerWorker:
         """Publish scheduler.task_dispatched and log to audit table."""
         self._schedule(self._emit_dispatched(task, subtask))
 
-    def publish_task_completed(self, task: Task) -> None:
-        self._schedule(self._emit_scheduler_event(SCHEDULER_TASK_COMPLETED, task, {}))
+    def publish_task_completed(self, task: Task, device_payload: dict = None) -> None:
+        extra = dict(device_payload) if device_payload else {}
+        self._schedule(self._emit_scheduler_event(SCHEDULER_TASK_COMPLETED, task, extra))
 
     def publish_task_failed(self, task: Task, error: str) -> None:
         policy = _EXECUTION_POLICY.get(task.task_type, "infrastructure")
