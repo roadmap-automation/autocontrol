@@ -500,7 +500,7 @@ class BrokerWorker:
             elif dt == 'distribution':
                 dev = distribution_device(name=device_name, address=device_address)
             else:
-                logger.warning("device.registered: unknown device_type '%s'", device_type)
+                logger.warning("device.registered: device '%s' has unknown device_type '%s'", device_name, device_type)
                 return
 
             dev.number_of_channels = num_channels
