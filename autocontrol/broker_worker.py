@@ -120,6 +120,15 @@ class BrokerWorker:
         self._pg_pool = None  # asyncpg pool, set in _run()
         self._thread: Optional[threading.Thread] = None
 
+        # Subtask completion tracking for multi-device TRANSFER tasks.
+        # Maps task_id (str) → number of subtasks still outstanding.
+        # Incremented in task_dispatch_hook() (sync thread) once per dispatched
+        # subtask.  Decremented in _on_device_event() (async thread) on each
+        # task.completed.  The completion event is only forwarded to
+        # completion_events when the count reaches zero.
+        self._pending_subtasks: dict[str, int] = {}
+        self._pending_subtasks_lock = threading.Lock()
+
     # ------------------------------------------------------------------
     # Thread-safe public API  (called from the sync Flask thread)
     # ------------------------------------------------------------------
@@ -165,6 +174,9 @@ class BrokerWorker:
             self.completion_events.put((str(task.id), "completed", None))
             self.wakeup.set()
             return
+        with self._pending_subtasks_lock:
+            task_id_str = str(task.id)
+            self._pending_subtasks[task_id_str] = self._pending_subtasks.get(task_id_str, 0) + 1
         self.dispatch_to_device(task, subtask)
         self.publish_dispatched(task, subtask)
 
@@ -368,6 +380,8 @@ class BrokerWorker:
                 raise ValueError("cancel_task missing task_id")
             cancelled = self.atc.queue_cancel(task_id=task_id)
             if cancelled:
+                with self._pending_subtasks_lock:
+                    self._pending_subtasks.pop(str(cancelled.id), None)
                 await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
                 await self._log_event(
                     task_id=cancelled.id,
@@ -432,8 +446,24 @@ class BrokerWorker:
         self, envelope: Envelope, message: aio_pika.abc.AbstractIncomingMessage
     ) -> None:
         rk = message.routing_key or ""
-        status = "completed" if TASK_COMPLETED in rk else "failed"
-        self.completion_events.put((str(envelope.task_id), status, envelope))
+        task_id_str = str(envelope.task_id)
+
+        if TASK_COMPLETED in rk:
+            with self._pending_subtasks_lock:
+                remaining = self._pending_subtasks.get(task_id_str)
+                if remaining is not None:
+                    remaining -= 1
+                    if remaining > 0:
+                        self._pending_subtasks[task_id_str] = remaining
+                        return  # wait for remaining subtasks to complete
+                    del self._pending_subtasks[task_id_str]
+            self.completion_events.put((task_id_str, "completed", envelope))
+        else:
+            # Failure: forward immediately and stop waiting for this task.
+            with self._pending_subtasks_lock:
+                self._pending_subtasks.pop(task_id_str, None)
+            self.completion_events.put((task_id_str, "failed", envelope))
+
         self.wakeup.set()
 
     # ------------------------------------------------------------------
