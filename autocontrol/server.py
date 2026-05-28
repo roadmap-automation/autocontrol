@@ -45,6 +45,9 @@ def background_task():
             if task is None:
                 continue
             if status == "completed":
+                if envelope is not None and envelope.data_reference is not None:
+                    for subtask in task.tasks:
+                        subtask.md['retrieval_uri'] = envelope.data_reference.retrieval_uri
                 if atc.post_process_task(task):
                     broker.publish_task_completed(task)
                     _publish_channel_events_after_completion(task)
@@ -159,6 +162,8 @@ def get_subtask_results(task_id, subtask_id):
         abort(400, description="Subtask not found")
 
     retval = subtask.md.get('task_execution_data', {})
+    if 'retrieval_uri' in subtask.md:
+        retval['retrieval_uri'] = subtask.md['retrieval_uri']
 
     return json.dumps(retval)
 
