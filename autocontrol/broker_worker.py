@@ -280,6 +280,29 @@ class BrokerWorker:
         envelope = build(device_id="autocontrol", routing_key=routing_key)
         await publish(self._instrument_exchange, routing_key, envelope)
 
+    async def _emit_tasks_failed(self, tasks: list, reason: str) -> None:
+        """Publish scheduler.task_failed for each task in the list.
+
+        Called before reset() and on startup to drain any tasks that autocontrol
+        can no longer honour.  Subscribers (lh_manager) unblock their waiters on
+        receipt so samples don't hang indefinitely.
+        """
+        if not tasks or self._instrument_exchange is None:
+            return
+        for task in tasks:
+            try:
+                policy = _EXECUTION_POLICY.get(task.task_type, "infrastructure")
+                await self._emit_scheduler_event(
+                    SCHEDULER_TASK_FAILED,
+                    task,
+                    {"error": reason, "error_domain": policy},
+                )
+            except Exception:
+                logger.exception("Failed to publish task_failed for task %s", task.id)
+        logger.info(
+            "Published scheduler.task_failed for %d task(s): %s", len(tasks), reason
+        )
+
     async def _publish_device_command(self, task: Task, subtask) -> None:
         if self._instrument_exchange is None:
             return
@@ -435,6 +458,8 @@ class BrokerWorker:
             self.atc.paused = False
 
         elif verb == "reset":
+            doomed = self.atc.queue.get_all() + self.atc.active_tasks.get_all()
+            await self._emit_tasks_failed(doomed, "Task cancelled: autocontrol was reset.")
             self.atc.reset()
             await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
 
@@ -576,6 +601,21 @@ class BrokerWorker:
                 auto_delete=True,
             )
             await reg_queue.bind(self._instrument_exchange, routing_key=DEVICE_REGISTERED)
+
+            # Drain any tasks left in SQLite from a prior crash or unclean shutdown.
+            # Publish scheduler.task_failed for each so downstream subscribers (lh_manager)
+            # can unblock their waiters immediately.  The queues are cleared afterward so
+            # the same tasks are never re-dispatched.
+            orphaned = self.atc.active_tasks.get_all() + self.atc.queue.get_all()
+            if orphaned:
+                logger.warning(
+                    "Found %d orphaned task(s) from prior run; publishing scheduler.task_failed.",
+                    len(orphaned),
+                )
+                await self._emit_tasks_failed(
+                    orphaned, "Task cancelled: autocontrol restarted."
+                )
+                self.atc.reset()
 
             # Request all running devices to re-announce themselves.
             # Handles the case where autocontrol starts after devices are already up.
