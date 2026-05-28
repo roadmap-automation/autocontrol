@@ -51,6 +51,7 @@ from roadmap_broker_client.topology import (
 )
 from roadmap_broker_client.topics import (
     CMD_SUBMIT_TASK,
+    DEVICE_ANNOUNCE_REQUEST,
     DEVICE_REGISTERED,
     INSTRUMENT_EXCHANGE,
     SCHEDULER_CHANNEL_LOCKED,
@@ -576,6 +577,14 @@ class BrokerWorker:
             )
             await reg_queue.bind(self._instrument_exchange, routing_key=DEVICE_REGISTERED)
 
+            # Request all running devices to re-announce themselves.
+            # Handles the case where autocontrol starts after devices are already up.
+            announce_msg = build(
+                device_id="autocontrol",
+                routing_key=DEVICE_ANNOUNCE_REQUEST,
+                payload={},
+            )
+            await publish(self._instrument_exchange, DEVICE_ANNOUNCE_REQUEST, announce_msg)
             logger.info("Broker worker running.")
             await asyncio.gather(
                 consume(cmd_queue, self._on_command),
