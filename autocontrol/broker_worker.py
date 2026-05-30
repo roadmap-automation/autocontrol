@@ -378,7 +378,11 @@ class BrokerWorker:
             task_id = payload.get("task_id")
             if not task_id:
                 raise ValueError("cancel_task missing task_id")
-            cancelled = self.atc.queue_cancel(task_id=task_id)
+            cancelled = self.atc.queue_cancel(
+                task_id=task_id,
+                include_active_queue=payload.get("include_active_queue", False),
+                drop_material=payload.get("drop_material", True),
+            )
             if cancelled:
                 with self._pending_subtasks_lock:
                     self._pending_subtasks.pop(str(cancelled.id), None)
