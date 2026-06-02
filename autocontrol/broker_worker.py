@@ -50,6 +50,7 @@ from roadmap_broker_client.topology import (
     declare_topology,
 )
 from roadmap_broker_client.topics import (
+    CMD_CANCEL_TASK,
     CMD_SUBMIT_TASK,
     DEVICE_ANNOUNCE_REQUEST,
     DEVICE_REGISTERED,
@@ -326,6 +327,19 @@ class BrokerWorker:
         )
         await publish(self._instrument_exchange, rk, envelope)
 
+    async def _publish_cancel_to_device(self, device_id: str, task_id: str) -> None:
+        if self._instrument_exchange is None:
+            return
+        rk = command_key(device_id, CMD_CANCEL_TASK)
+        envelope = build(
+            device_id="autocontrol",
+            routing_key=rk,
+            task_id=task_id,
+            payload={"task_id": task_id},
+        )
+        await publish(self._instrument_exchange, rk, envelope)
+        logger.debug("Published cancel_task to device '%s' for task %s.", device_id, task_id)
+
     # ------------------------------------------------------------------
     # Audit log
     # ------------------------------------------------------------------
@@ -404,7 +418,13 @@ class BrokerWorker:
             task_id = payload.get("task_id")
             if not task_id:
                 raise ValueError("cancel_task missing task_id")
-            cancelled = self.atc.queue_cancel(task_id=task_id)
+            include_active = bool(payload.get("include_active_queue", False))
+            drop_material = bool(payload.get("drop_material", True))
+            cancelled = self.atc.queue_cancel(
+                task_id=task_id,
+                include_active_queue=include_active,
+                drop_material=drop_material,
+            )
             if cancelled:
                 with self._pending_subtasks_lock:
                     self._pending_subtasks.pop(str(cancelled.id), None)
@@ -416,6 +436,10 @@ class BrokerWorker:
                     event_type="cancelled",
                     task_type=cancelled.task_type.value,
                 )
+                if include_active and cancelled.tasks:
+                    for subtask in cancelled.tasks:
+                        if subtask.device:
+                            await self._publish_cancel_to_device(subtask.device, str(cancelled.id))
 
         elif verb == "resubmit_task":
             task_id = payload.get("task_id")
