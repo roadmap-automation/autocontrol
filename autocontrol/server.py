@@ -46,7 +46,9 @@ def background_task():
                 continue
             if status == "completed":
                 if atc.post_process_task(task):
-                    device_payload = envelope.payload if envelope else {}
+                    device_payload = dict(envelope.payload) if envelope else {}
+                    if envelope and envelope.data_reference:
+                        device_payload["retrieval_uri"] = envelope.data_reference.retrieval_uri
                     broker.publish_task_completed(task, device_payload=device_payload)
                     _publish_channel_events_after_completion(task)
                     wait_time = 0.1
