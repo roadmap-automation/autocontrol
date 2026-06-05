@@ -135,7 +135,17 @@ class TaskContainer:
 
         for subtask in task.tasks:
             busy_channels = self.find_channels(device_name=subtask.device)
-            if subtask.channel in busy_channels:
+            if not busy_channels:
+                continue
+            if subtask.channel is not None:
+                # Specific channel requested — only block on a direct clash.
+                if subtask.channel in busy_channels:
+                    return True
+            else:
+                # No channel assigned yet.  In broker mode the device never
+                # reports BUSY via get_device_and_channel_status(), so this is
+                # the only place we can gate a new task on a device that already
+                # has an active task.  Block until the device is free.
                 return True
         return False
 
