@@ -128,25 +128,51 @@ class TaskContainer:
 
     def find_interference(self, task):
         """
-        Checks if a task is interfering with an existing task on the same (target) device and (target) channel.
-        :param task: (task_struct.Task) task to check
-        :return: (bool) True if task is interfering
-        """
+        Checks if a task is interfering with an existing task on the same device and channel.
 
+        In broker mode devices always report IDLE via get_device_and_channel_status(), so
+        this method is the sole gate against concurrent dispatch to a device.  Two cases:
+
+        - Specific channel (channel is not None): block only if that exact channel is already
+          claimed, or if a channel-less task (e.g. Prime) is holding the device exclusively.
+        - No channel (channel is None): block if the device has any active task at all,
+          since we cannot determine which channel (if any) is free.
+        """
         for subtask in task.tasks:
-            busy_channels = self.find_channels(device_name=subtask.device)
-            if not busy_channels:
-                continue
-            if subtask.channel is not None:
-                # Specific channel requested — only block on a direct clash.
-                if subtask.channel in busy_channels:
-                    return True
-            else:
-                # No channel assigned yet.  In broker mode the device never
-                # reports BUSY via get_device_and_channel_status(), so this is
-                # the only place we can gate a new task on a device that already
-                # has an active task.  Block until the device is free.
+            # Collect all active channels on this device and whether any active task
+            # holds the device without a specific channel (e.g. NOCHANNEL/Prime).
+            self.lock.acquire()
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT task FROM task_table")
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            self.lock.release()
+
+            active_channels: set = set()
+            has_nochannel: bool = False
+            for row in rows:
+                tsk = task_struct.Task.parse_raw(row[0])
+                for st in tsk.tasks:
+                    if st.device == subtask.device:
+                        if st.channel is not None:
+                            active_channels.add(st.channel)
+                        else:
+                            has_nochannel = True
+
+            if not active_channels and not has_nochannel:
+                continue  # device is idle
+
+            if subtask.channel is None:
+                # No channel requested — any active task on the device is a conflict.
                 return True
+            else:
+                # Specific channel — block on a direct clash or if a no-channel task
+                # (which cannot coexist with anything) is holding the device.
+                if subtask.channel in active_channels or has_nochannel:
+                    return True
+
         return False
 
     def get_all(self):
