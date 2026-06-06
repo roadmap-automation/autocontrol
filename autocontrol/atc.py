@@ -624,10 +624,6 @@ class autocontrol:
             # Attach measurement task to the physical occupancy list
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
 
-        elif task.task_type == TaskType.PREPARE:
-            # attach current task to the channel physical occupancy
-            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
-
         elif task.task_type == TaskType.TRANSFER:
             # transfers from channel source (as opposed to non-channel sources)
             if task.tasks[0].channel is not None:
