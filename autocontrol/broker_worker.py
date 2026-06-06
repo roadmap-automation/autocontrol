@@ -475,6 +475,23 @@ class BrokerWorker:
                 task_type=new_task.task_type.value,
             )
 
+        elif verb == "clear_channel":
+            # Force-clear a specific device channel from channel_po.
+            # Used to unstick a channel held by a completed/historical task.
+            # payload: {"device": "<device_id>", "channel": <int>}
+            device = payload.get("device")
+            channel = payload.get("channel")
+            if device is None or channel is None:
+                raise ValueError("clear_channel requires 'device' and 'channel'")
+            channel = int(channel)
+            if device in self.atc.channel_po and channel < len(self.atc.channel_po[device]):
+                self.atc.channel_po[device][channel] = None
+                self.atc.store_channel_po()
+                self.wakeup.set()
+                logger.info("clear_channel: freed %s channel %d", device, channel)
+            else:
+                logger.warning("clear_channel: %s channel %d not found in channel_po", device, channel)
+
         elif verb == "pause":
             self.atc.paused = True
 
