@@ -454,6 +454,10 @@ class BrokerWorker:
             if old_task is None:
                 self.atc.paused = was_paused
                 raise ValueError(f"resubmit_task: task {task_id} not found")
+            if old_task.tasks:
+                for subtask in old_task.tasks:
+                    if subtask.device:
+                        await self._publish_cancel_to_device(subtask.device, task_id)
             if "task" in payload:
                 try:
                     new_task = Task(**payload["task"])
