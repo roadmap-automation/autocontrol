@@ -428,6 +428,7 @@ class BrokerWorker:
             if cancelled:
                 with self._pending_subtasks_lock:
                     self._pending_subtasks.pop(str(cancelled.id), None)
+                self.atc.suspended_samples.discard(cancelled.sample_number)
                 await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
                 await self._log_event(
                     task_id=cancelled.id,
@@ -446,38 +447,43 @@ class BrokerWorker:
             if not task_id:
                 raise ValueError("resubmit_task missing task_id")
             was_paused = self.atc.paused
-            if not was_paused:
-                self.atc.paused = True
-            old_task = self.atc.queue_cancel(
-                task_id=task_id, include_active_queue=True, drop_material=False
-            )
-            if old_task is None:
+            self.atc.paused = True
+            old_task = None
+            new_task = None
+            try:
+                old_task = self.atc.queue_cancel(
+                    task_id=task_id, include_active_queue=True, drop_material=False
+                )
+                if old_task is None:
+                    raise ValueError(f"resubmit_task: task {task_id} not found")
+                if old_task.tasks:
+                    for subtask in old_task.tasks:
+                        if subtask.device:
+                            await self._publish_cancel_to_device(subtask.device, task_id)
+                if "task" in payload:
+                    try:
+                        new_task = Task(**payload["task"])
+                        new_task.priority = old_task.priority
+                    except (ValidationError, TypeError) as exc:
+                        logger.error("resubmit_task: invalid task payload: %s", exc)
+                        raise
+                else:
+                    new_task = old_task
+                self.atc.queue_put(task=new_task)
+            finally:
+                if old_task is not None:
+                    self.atc.suspended_samples.discard(old_task.sample_number)
                 self.atc.paused = was_paused
-                raise ValueError(f"resubmit_task: task {task_id} not found")
-            if old_task.tasks:
-                for subtask in old_task.tasks:
-                    if subtask.device:
-                        await self._publish_cancel_to_device(subtask.device, task_id)
-            if "task" in payload:
-                try:
-                    new_task = Task(**payload["task"])
-                    new_task.priority = old_task.priority
-                except (ValidationError, TypeError) as exc:
-                    self.atc.paused = was_paused
-                    logger.error("resubmit_task: invalid task payload: %s", exc)
-                    raise
-            else:
-                new_task = old_task
-            self.atc.queue_put(task=new_task)
-            self.atc.paused = was_paused
+            self.wakeup.set()
             await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
-            await self._log_event(
-                task_id=new_task.id,
-                sample_id=new_task.sample_id,
-                sample_number=new_task.sample_number,
-                event_type="retried",
-                task_type=new_task.task_type.value,
-            )
+            if new_task is not None:
+                await self._log_event(
+                    task_id=new_task.id,
+                    sample_id=new_task.sample_id,
+                    sample_number=new_task.sample_number,
+                    event_type="retried",
+                    task_type=new_task.task_type.value,
+                )
 
         elif verb == "clear_channel":
             # Force-clear a specific device channel from channel_po.

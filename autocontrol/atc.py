@@ -112,6 +112,9 @@ class autocontrol:
 
         # run control
         self.paused = False
+        # sample numbers whose pending tasks must not dispatch while a failure
+        # is awaiting a resubmit or cancel decision
+        self.suspended_samples: set = set()
 
         # Optional hook called after a device object is created in pre_process_init().
         # Signature: device_created_hook(device_object) -> None
@@ -718,7 +721,7 @@ class autocontrol:
         # implementation is to give the 'init' task a higher priority than the rest.
         task_priority = [[TaskType.INIT], [TaskType.PREPARE, TaskType.TRANSFER, TaskType.MEASURE, TaskType.NOCHANNEL],
                          [TaskType.SHUTDOWN]]
-        blocked_samples = []
+        blocked_samples = list(self.suspended_samples)
         success = False
 
         i = 0
@@ -916,6 +919,7 @@ class autocontrol:
         """
         self.queue.clear()
         self.active_tasks.clear()
+        self.suspended_samples.clear()
         # never delete the sample history
         # self.sample_history.clear()
         # clear channel occupancies
