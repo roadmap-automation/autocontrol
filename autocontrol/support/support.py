@@ -117,29 +117,29 @@ def start(portnumber=5004, storage_path=None, delete_contents=False):
             (storage_path / 'channel_po.json').unlink(missing_ok=True)
 
     # ------------------ Starting Streamlit Monitor----------------------------------
-    # set flag in autocontrol configuration that startup is in progress (gives the user the chance to potentially
-    # select an autocontrol storage directory
-    config = configuration.load_persistent_cfg()
-    config.autocontrol_startup = True
-    configuration.save_persistent_cfg(config)
-
     print("Starting Streamlit Viewer with storage path: {}".format(storage_path))
     process = multiprocessing.Process(target=start_streamlit_viewer, args=(storage_path, 'http://localhost',
                                                                            portnumber))
     process.start()
 
     # ------------------ Starting Flask Server----------------------------------
-    # waiting for the autocontrol app to release the startup flag
-    sleep_counter = 0
-    while True:
-        time.sleep(2)
-        sleep_counter += 1
+    if storage_path is None:
+        # No path provided: set startup flag and wait for the Streamlit GUI to
+        # authorize startup and supply a storage directory.
         config = configuration.load_persistent_cfg()
-        if not config.autocontrol_startup:
-            storage_path=config.autocontrol_dir
-            break
-        if sleep_counter % 10 == 0:
-            print("Waiting for the Autocontrol App to authorize server startup ...")
+        config.autocontrol_startup = True
+        configuration.save_persistent_cfg(config)
+
+        sleep_counter = 0
+        while True:
+            time.sleep(2)
+            sleep_counter += 1
+            config = configuration.load_persistent_cfg()
+            if not config.autocontrol_startup:
+                storage_path = config.autocontrol_dir
+                break
+            if sleep_counter % 10 == 0:
+                print("Waiting for the Autocontrol App to authorize server startup ...")
 
     hostname = socket.gethostname()
     try:

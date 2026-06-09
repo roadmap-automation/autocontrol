@@ -49,12 +49,16 @@ def background_task():
                     for subtask in task.tasks:
                         subtask.md['retrieval_uri'] = envelope.data_reference.retrieval_uri
                 if atc.post_process_task(task):
-                    broker.publish_task_completed(task)
+                    device_payload = dict(envelope.payload) if envelope else {}
+                    if envelope and envelope.data_reference:
+                        device_payload["retrieval_uri"] = envelope.data_reference.retrieval_uri
+                    broker.publish_task_completed(task, device_payload=device_payload)
                     _publish_channel_events_after_completion(task)
                     wait_time = 0.1
             else:
                 error = envelope.payload.get("error", "Device reported failure.")
                 broker.publish_task_failed(task, error)
+                atc.suspended_samples.add(task.sample_number)
                 wait_time = 0.1
 
         # Try to execute one item from the scheduling queue. If all resources are busy or the queue is empty,

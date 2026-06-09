@@ -112,6 +112,9 @@ class autocontrol:
 
         # run control
         self.paused = False
+        # sample numbers whose pending tasks must not dispatch while a failure
+        # is awaiting a resubmit or cancel decision
+        self.suspended_samples: set = set()
 
         # Optional hook called after a device object is created in pre_process_init().
         # Signature: device_created_hook(device_object) -> None
@@ -281,6 +284,10 @@ class autocontrol:
         device_address = subtask.device_address
         simulated = subtask.simulated
         sample_mixing = subtask.sample_mixing
+
+        # Already pre-registered via device.registered — skip re-creation.
+        if device_name in self.devices:
+            return True, task, 'Success. Device already registered.'
 
         if device_type == 'injection' or device_type == 'INJECTION':
             device_object = injection_device(name=device_name, address=device_address, simulated=simulated)
@@ -620,10 +627,6 @@ class autocontrol:
             # Attach measurement task to the physical occupancy list
             self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
 
-        elif task.task_type == TaskType.PREPARE:
-            # attach current task to the channel physical occupancy
-            self.channel_po[task.tasks[0].device][task.tasks[0].channel] = task
-
         elif task.task_type == TaskType.TRANSFER:
             # transfers from channel source (as opposed to non-channel sources)
             if task.tasks[0].channel is not None:
@@ -718,7 +721,7 @@ class autocontrol:
         # implementation is to give the 'init' task a higher priority than the rest.
         task_priority = [[TaskType.INIT], [TaskType.PREPARE, TaskType.TRANSFER, TaskType.MEASURE, TaskType.NOCHANNEL],
                          [TaskType.SHUTDOWN]]
-        blocked_samples = []
+        blocked_samples = list(self.suspended_samples)
         success = False
 
         i = 0
@@ -916,6 +919,7 @@ class autocontrol:
         """
         self.queue.clear()
         self.active_tasks.clear()
+        self.suspended_samples.clear()
         # never delete the sample history
         # self.sample_history.clear()
         # clear channel occupancies

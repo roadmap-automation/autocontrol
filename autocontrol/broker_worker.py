@@ -50,7 +50,10 @@ from roadmap_broker_client.topology import (
     declare_topology,
 )
 from roadmap_broker_client.topics import (
+    CMD_CANCEL_TASK,
     CMD_SUBMIT_TASK,
+    DEVICE_ANNOUNCE_REQUEST,
+    DEVICE_REGISTERED,
     INSTRUMENT_EXCHANGE,
     SCHEDULER_CHANNEL_LOCKED,
     SCHEDULER_CHANNEL_RELEASED,
@@ -141,8 +144,9 @@ class BrokerWorker:
         """Publish scheduler.task_dispatched and log to audit table."""
         self._schedule(self._emit_dispatched(task, subtask))
 
-    def publish_task_completed(self, task: Task) -> None:
-        self._schedule(self._emit_scheduler_event(SCHEDULER_TASK_COMPLETED, task, {}))
+    def publish_task_completed(self, task: Task, device_payload: dict = None) -> None:
+        extra = dict(device_payload) if device_payload else {}
+        self._schedule(self._emit_scheduler_event(SCHEDULER_TASK_COMPLETED, task, extra))
 
     def publish_task_failed(self, task: Task, error: str) -> None:
         policy = _EXECUTION_POLICY.get(task.task_type, "infrastructure")
@@ -277,6 +281,29 @@ class BrokerWorker:
         envelope = build(device_id="autocontrol", routing_key=routing_key)
         await publish(self._instrument_exchange, routing_key, envelope)
 
+    async def _emit_tasks_failed(self, tasks: list, reason: str) -> None:
+        """Publish scheduler.task_failed for each task in the list.
+
+        Called before reset() and on startup to drain any tasks that autocontrol
+        can no longer honour.  Subscribers (lh_manager) unblock their waiters on
+        receipt so samples don't hang indefinitely.
+        """
+        if not tasks or self._instrument_exchange is None:
+            return
+        for task in tasks:
+            try:
+                policy = _EXECUTION_POLICY.get(task.task_type, "infrastructure")
+                await self._emit_scheduler_event(
+                    SCHEDULER_TASK_FAILED,
+                    task,
+                    {"error": reason, "error_domain": policy},
+                )
+            except Exception:
+                logger.exception("Failed to publish task_failed for task %s", task.id)
+        logger.info(
+            "Published scheduler.task_failed for %d task(s): %s", len(tasks), reason
+        )
+
     async def _publish_device_command(self, task: Task, subtask) -> None:
         if self._instrument_exchange is None:
             return
@@ -299,6 +326,19 @@ class BrokerWorker:
             },
         )
         await publish(self._instrument_exchange, rk, envelope)
+
+    async def _publish_cancel_to_device(self, device_id: str, task_id: str) -> None:
+        if self._instrument_exchange is None:
+            return
+        rk = command_key(device_id, CMD_CANCEL_TASK)
+        envelope = build(
+            device_id="autocontrol",
+            routing_key=rk,
+            task_id=task_id,
+            payload={"task_id": task_id},
+        )
+        await publish(self._instrument_exchange, rk, envelope)
+        logger.debug("Published cancel_task to device '%s' for task %s.", device_id, task_id)
 
     # ------------------------------------------------------------------
     # Audit log
@@ -378,14 +418,17 @@ class BrokerWorker:
             task_id = payload.get("task_id")
             if not task_id:
                 raise ValueError("cancel_task missing task_id")
+            include_active = bool(payload.get("include_active_queue", False))
+            drop_material = bool(payload.get("drop_material", True))
             cancelled = self.atc.queue_cancel(
                 task_id=task_id,
-                include_active_queue=payload.get("include_active_queue", False),
-                drop_material=payload.get("drop_material", True),
+                include_active_queue=include_active,
+                drop_material=drop_material,
             )
             if cancelled:
                 with self._pending_subtasks_lock:
                     self._pending_subtasks.pop(str(cancelled.id), None)
+                self.atc.suspended_samples.discard(cancelled.sample_number)
                 await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
                 await self._log_event(
                     task_id=cancelled.id,
@@ -394,40 +437,70 @@ class BrokerWorker:
                     event_type="cancelled",
                     task_type=cancelled.task_type.value,
                 )
+                if include_active and cancelled.tasks:
+                    for subtask in cancelled.tasks:
+                        if subtask.device:
+                            await self._publish_cancel_to_device(subtask.device, str(cancelled.id))
 
         elif verb == "resubmit_task":
             task_id = payload.get("task_id")
             if not task_id:
                 raise ValueError("resubmit_task missing task_id")
             was_paused = self.atc.paused
-            if not was_paused:
-                self.atc.paused = True
-            old_task = self.atc.queue_cancel(
-                task_id=task_id, include_active_queue=True, drop_material=False
-            )
-            if old_task is None:
+            self.atc.paused = True
+            old_task = None
+            new_task = None
+            try:
+                old_task = self.atc.queue_cancel(
+                    task_id=task_id, include_active_queue=True, drop_material=False
+                )
+                if old_task is None:
+                    raise ValueError(f"resubmit_task: task {task_id} not found")
+                if old_task.tasks:
+                    for subtask in old_task.tasks:
+                        if subtask.device:
+                            await self._publish_cancel_to_device(subtask.device, task_id)
+                if "task" in payload:
+                    try:
+                        new_task = Task(**payload["task"])
+                        new_task.priority = old_task.priority
+                    except (ValidationError, TypeError) as exc:
+                        logger.error("resubmit_task: invalid task payload: %s", exc)
+                        raise
+                else:
+                    new_task = old_task
+                self.atc.queue_put(task=new_task)
+            finally:
+                if old_task is not None:
+                    self.atc.suspended_samples.discard(old_task.sample_number)
                 self.atc.paused = was_paused
-                raise ValueError(f"resubmit_task: task {task_id} not found")
-            if "task" in payload:
-                try:
-                    new_task = Task(**payload["task"])
-                    new_task.priority = old_task.priority
-                except (ValidationError, TypeError) as exc:
-                    self.atc.paused = was_paused
-                    logger.error("resubmit_task: invalid task payload: %s", exc)
-                    raise
-            else:
-                new_task = old_task
-            self.atc.queue_put(task=new_task)
-            self.atc.paused = was_paused
+            self.wakeup.set()
             await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
-            await self._log_event(
-                task_id=new_task.id,
-                sample_id=new_task.sample_id,
-                sample_number=new_task.sample_number,
-                event_type="retried",
-                task_type=new_task.task_type.value,
-            )
+            if new_task is not None:
+                await self._log_event(
+                    task_id=new_task.id,
+                    sample_id=new_task.sample_id,
+                    sample_number=new_task.sample_number,
+                    event_type="retried",
+                    task_type=new_task.task_type.value,
+                )
+
+        elif verb == "clear_channel":
+            # Force-clear a specific device channel from channel_po.
+            # Used to unstick a channel held by a completed/historical task.
+            # payload: {"device": "<device_id>", "channel": <int>}
+            device = payload.get("device")
+            channel = payload.get("channel")
+            if device is None or channel is None:
+                raise ValueError("clear_channel requires 'device' and 'channel'")
+            channel = int(channel)
+            if device in self.atc.channel_po and channel < len(self.atc.channel_po[device]):
+                self.atc.channel_po[device][channel] = None
+                self.atc.store_channel_po()
+                self.wakeup.set()
+                logger.info("clear_channel: freed %s channel %d", device, channel)
+            else:
+                logger.warning("clear_channel: %s channel %d not found in channel_po", device, channel)
 
         elif verb == "pause":
             self.atc.paused = True
@@ -436,6 +509,8 @@ class BrokerWorker:
             self.atc.paused = False
 
         elif verb == "reset":
+            doomed = self.atc.queue.get_all() + self.atc.active_tasks.get_all()
+            await self._emit_tasks_failed(doomed, "Task cancelled: autocontrol was reset.")
             self.atc.reset()
             await self._emit_lightweight(SCHEDULER_QUEUE_UPDATED)
 
@@ -468,6 +543,64 @@ class BrokerWorker:
                 self._pending_subtasks.pop(task_id_str, None)
             self.completion_events.put((task_id_str, "failed", envelope))
 
+        self.wakeup.set()
+
+    # ------------------------------------------------------------------
+    # Inbound: device.registered from device services
+    # ------------------------------------------------------------------
+
+    async def _on_device_registered(
+        self, envelope: Envelope, message: aio_pika.abc.AbstractIncomingMessage
+    ) -> None:
+        payload = envelope.payload
+        device_name = payload.get("device_id", "")
+        device_type = payload.get("device_type", "")
+        device_address = payload.get("address", "")
+        num_channels = int(payload.get("num_channels", 1))
+        sample_mixing = bool(payload.get("allow_sample_mixing", True))
+
+        def _register() -> None:
+            from autocontrol.devices.device_injection import injection_device, distribution_device
+            from autocontrol.devices.device_liquid_handler import lh_device
+            from autocontrol.devices.device_qcmd import open_QCMD
+            from autocontrol.devices.device_rinse import rinse_device
+
+            dt = device_type.lower()
+            if dt == 'injection':
+                dev = injection_device(name=device_name, address=device_address)
+            elif dt == 'lh':
+                dev = lh_device(name=device_name, address=device_address)
+            elif dt == 'qcmd':
+                dev = open_QCMD(name=device_name, address=device_address)
+            elif dt == 'rinse':
+                dev = rinse_device(name=device_name, address=device_address)
+            elif dt == 'distribution':
+                dev = distribution_device(name=device_name, address=device_address)
+            else:
+                logger.warning("device.registered: device '%s' has unknown device_type '%s'", device_name, device_type)
+                return
+
+            dev.number_of_channels = num_channels
+            if self.atc.device_created_hook is not None:
+                self.atc.device_created_hook(dev)
+
+            self.atc.devices.setdefault(device_name, {})
+            self.atc.devices[device_name]['device_object'] = dev
+            self.atc.devices[device_name]['device_type'] = device_type
+            self.atc.devices[device_name]['device_address'] = device_address
+            self.atc.devices[device_name]['sample_mixing'] = sample_mixing
+
+            # Pre-populate channel_po only if not already present (idempotent).
+            if device_name not in self.atc.channel_po:
+                self.atc.channel_po[device_name] = [None] * num_channels
+                self.atc.store_channel_po()
+
+            logger.info(
+                "device.registered: pre-registered '%s' (%s, %d ch)",
+                device_name, device_type, num_channels,
+            )
+
+        await asyncio.to_thread(_register)
         self.wakeup.set()
 
     # ------------------------------------------------------------------
@@ -511,11 +644,44 @@ class BrokerWorker:
                 routing_key_pattern=TASK_FAILED,
             )
 
+            # Transient queue for device registration — auto-deletes on disconnect
+            # so stale announcements never pile up across restarts.
+            reg_queue = await channel.declare_queue(
+                "autocontrol.device_registrations",
+                durable=False,
+                auto_delete=True,
+            )
+            await reg_queue.bind(self._instrument_exchange, routing_key=DEVICE_REGISTERED)
+
+            # Drain any tasks left in SQLite from a prior crash or unclean shutdown.
+            # Publish scheduler.task_failed for each so downstream subscribers (lh_manager)
+            # can unblock their waiters immediately.  The queues are cleared afterward so
+            # the same tasks are never re-dispatched.
+            orphaned = self.atc.active_tasks.get_all() + self.atc.queue.get_all()
+            if orphaned:
+                logger.warning(
+                    "Found %d orphaned task(s) from prior run; publishing scheduler.task_failed.",
+                    len(orphaned),
+                )
+                await self._emit_tasks_failed(
+                    orphaned, "Task cancelled: autocontrol restarted."
+                )
+                self.atc.reset()
+
+            # Request all running devices to re-announce themselves.
+            # Handles the case where autocontrol starts after devices are already up.
+            announce_msg = build(
+                device_id="autocontrol",
+                routing_key=DEVICE_ANNOUNCE_REQUEST,
+                payload={},
+            )
+            await publish(self._instrument_exchange, DEVICE_ANNOUNCE_REQUEST, announce_msg)
             logger.info("Broker worker running.")
             await asyncio.gather(
                 consume(cmd_queue, self._on_command),
                 consume(completed_queue, self._on_device_event),
                 consume(failed_queue, self._on_device_event),
+                consume(reg_queue, self._on_device_registered),
             )
 
     # ------------------------------------------------------------------
