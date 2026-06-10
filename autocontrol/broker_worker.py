@@ -560,6 +560,7 @@ class BrokerWorker:
         sample_mixing = bool(payload.get("allow_sample_mixing", True))
 
         def _register() -> None:
+            from autocontrol.devices.device import Device
             from autocontrol.devices.device_injection import injection_device, distribution_device
             from autocontrol.devices.device_liquid_handler import lh_device
             from autocontrol.devices.device_qcmd import open_QCMD
@@ -576,6 +577,11 @@ class BrokerWorker:
                 dev = rinse_device(name=device_name, address=device_address)
             elif dt == 'distribution':
                 dev = distribution_device(name=device_name, address=device_address)
+            elif dt == 'refl':
+                # Passive multi-channel measurement device (e.g. neutron reflectometer).
+                # Samples are placed by the LH; the reflectometer cannot initiate transfers.
+                dev = Device(name=device_name, address=device_address)
+                dev.passive = True
             else:
                 logger.warning("device.registered: device '%s' has unknown device_type '%s'", device_name, device_type)
                 return
