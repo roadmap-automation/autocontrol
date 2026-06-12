@@ -245,6 +245,7 @@ class BrokerWorker:
             payload={
                 "device": subtask.device if subtask else None,
                 "channel": subtask.channel if subtask else None,
+                "task_type": task.task_type.value,
                 **extra,
             },
         )
