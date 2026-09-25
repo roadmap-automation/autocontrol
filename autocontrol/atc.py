@@ -649,6 +649,20 @@ class autocontrol:
 
         return success
 
+    def fail_task(self, task, error: str) -> None:
+        """Move a failed task from active back to the pending queue.
+
+        Frees the device for new work while keeping the task available for
+        resubmit.  suspended_samples blocks re-dispatch until the operator
+        calls resubmit_task or cancel_task.
+        """
+        failures = task.md.get("failure_history", [])
+        failures.append({"time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "error": error})
+        task.md["failure_history"] = failures
+        self.active_tasks.remove(task)
+        self.queue.put(task)
+        self.suspended_samples.add(task.sample_number)
+
     def queue_inspect(self):
         """
         Returns the items of the queue in a list without removing them from the queue.

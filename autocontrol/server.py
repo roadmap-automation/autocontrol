@@ -57,8 +57,9 @@ def background_task():
                     wait_time = 0.1
             else:
                 error = envelope.payload.get("error", "Device reported failure.")
+                atc.fail_task(task, error)
                 broker.publish_task_failed(task, error)
-                atc.suspended_samples.add(task.sample_number)
+                broker.cancel_on_devices(task)
                 wait_time = 0.1
 
         # Try to execute one item from the scheduling queue. If all resources are busy or the queue is empty,

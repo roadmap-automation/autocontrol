@@ -154,6 +154,12 @@ class BrokerWorker:
             SCHEDULER_TASK_FAILED, task, {"error": error, "error_domain": policy}
         ))
 
+    def cancel_on_devices(self, task: Task) -> None:
+        """Send cancel_task to every device subtask — used when returning a failed task to the queue."""
+        for subtask in task.tasks:
+            if subtask.device:
+                self._schedule(self._publish_cancel_to_device(subtask.device, str(task.id)))
+
     def publish_channel_locked(self, device: str, channel: int) -> None:
         self._schedule(self._emit_channel_event(SCHEDULER_CHANNEL_LOCKED, device, channel))
 
