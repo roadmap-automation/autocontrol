@@ -285,6 +285,9 @@ def start_server(hostname='localhost', port=5003, storage_path=None):
     global atc, broker
     atc = autocontrol_atc.autocontrol(storage_path=storage_path)
 
+    # lh_manager enforces channel affinity externally; the target-occupancy check is redundant.
+    atc.strict_target_occupancy = False
+
     # Start broker worker and wire up hooks
     broker = BrokerWorker(atc)
 

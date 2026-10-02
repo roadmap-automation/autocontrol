@@ -74,6 +74,10 @@ class autocontrol:
         self.prepare_only = False
         self.storage_path = storage_path
 
+        # When False, skip the "Device channel not empty" check on TRANSFER target channels.
+        # Set to False in broker mode where lh_manager enforces channel affinity externally.
+        self.strict_target_occupancy = True
+
         # Queues and containers
         # Priority, active, and history queues
         db_path_queue = os.path.join(self.storage_path, 'priority_queue.sqlite3')
@@ -435,7 +439,7 @@ class autocontrol:
                         _, task, _, = reterror(False, subtask, i, task, response)
                     elif cpol[subtask.channel].sample_number != sample_number:
                         return reterror(False, subtask, i, task, 'Wrong sample in source channel.')
-                elif not device_obj.passive:
+                elif not device_obj.passive and self.strict_target_occupancy:
                     if cpol[subtask.channel] is not None:
                         return reterror(False, subtask, i, task, 'Device channel not empty.')
 
