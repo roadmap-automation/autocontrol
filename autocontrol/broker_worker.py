@@ -566,6 +566,7 @@ class BrokerWorker:
         num_channels = int(payload.get("num_channels", 1))
         sample_mixing = bool(payload.get("allow_sample_mixing", True))
         hardware_concurrency = payload.get("hardware_concurrency")
+        measure_concurrency = payload.get("measure_concurrency")
 
         def _register() -> None:
             from autocontrol.devices.device import Device
@@ -597,6 +598,8 @@ class BrokerWorker:
             dev.number_of_channels = num_channels
             if hardware_concurrency is not None:
                 dev.hardware_concurrency = int(hardware_concurrency)
+            if measure_concurrency is not None:
+                dev.measure_concurrency = int(measure_concurrency)
             if self.atc.device_created_hook is not None:
                 self.atc.device_created_hook(dev)
 

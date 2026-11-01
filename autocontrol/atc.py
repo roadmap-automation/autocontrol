@@ -320,19 +320,30 @@ class autocontrol:
     def _has_interference(self, task: Task) -> bool:
         """Returns True if task should be held due to device conflicts.
 
-        Combines the per-channel active-task check with a hardware-concurrency
-        check: if a device advertises hardware_concurrency < number_of_channels,
-        no new task is dispatched to it while that many channels are already active.
+        Combines the per-channel active-task check with two optional concurrency
+        limits devices can advertise:
+        - hardware_concurrency: caps simultaneous tasks of ANY type.
+        - measure_concurrency: caps simultaneous MEASURE tasks only; PREPARE/
+          TRANSFER on other channels proceed freely.
         """
         if self.active_tasks.find_interference(task):
             return True
         for subtask in task.tasks:
             dev = self.get_device_object(subtask.device)
-            if dev is None or dev.hardware_concurrency is None:
+            if dev is None:
                 continue
-            active = self.active_tasks.find_channels(device_name=subtask.device)
-            if len(active) >= dev.hardware_concurrency:
-                return True
+            if dev.hardware_concurrency is not None:
+                active = self.active_tasks.find_channels(device_name=subtask.device)
+                if len(active) >= dev.hardware_concurrency:
+                    return True
+            if dev.measure_concurrency is not None and task.task_type == TaskType.MEASURE:
+                active_measures = sum(
+                    1 for t in self.active_tasks.get_all()
+                    if t.task_type == TaskType.MEASURE
+                    and any(st.device == subtask.device for st in t.tasks)
+                )
+                if active_measures >= dev.measure_concurrency:
+                    return True
         return False
 
     def pre_process_measure(self, task: Task):

@@ -28,9 +28,13 @@ class Device(object):
         self.broker_mode = False
 
         # Maximum number of channels that can execute hardware tasks simultaneously.
-        # None means fully parallel. 1 means the device has a single physical task
-        # manager shared across all channels (e.g. a NICE-controlled reflectometer).
+        # None means fully parallel (one task per channel).
         self.hardware_concurrency: Optional[int] = None
+
+        # Maximum number of simultaneous MEASURE tasks. Other task types (PREPARE,
+        # TRANSFER) are unconstrained. Use this for instruments where the measurement
+        # resource is shared but fluid exchange on idle channels is independent.
+        self.measure_concurrency: Optional[int] = None
 
     def communicate(self, command, data=None, method='POST'):
         """
