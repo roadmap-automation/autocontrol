@@ -1,6 +1,7 @@
 import autocontrol.status
 from autocontrol.task_struct import TaskType
 from autocontrol.status import Status
+from typing import Optional
 from urllib.parse import urljoin
 import requests
 import time as ttime
@@ -25,6 +26,11 @@ class Device(object):
         # immediately.  Actual broker dispatch is handled by atc.task_dispatch_hook
         # which has access to both the Task and TaskData objects.
         self.broker_mode = False
+
+        # Maximum number of channels that can execute hardware tasks simultaneously.
+        # None means fully parallel. 1 means the device has a single physical task
+        # manager shared across all channels (e.g. a NICE-controlled reflectometer).
+        self.hardware_concurrency: Optional[int] = None
 
     def communicate(self, command, data=None, method='POST'):
         """

@@ -317,6 +317,24 @@ class autocontrol:
 
         return True, task, 'Success.'
 
+    def _has_interference(self, task: Task) -> bool:
+        """Returns True if task should be held due to device conflicts.
+
+        Combines the per-channel active-task check with a hardware-concurrency
+        check: if a device advertises hardware_concurrency < number_of_channels,
+        no new task is dispatched to it while that many channels are already active.
+        """
+        if self.active_tasks.find_interference(task):
+            return True
+        for subtask in task.tasks:
+            dev = self.get_device_object(subtask.device)
+            if dev is None or dev.hardware_concurrency is None:
+                continue
+            active = self.active_tasks.find_channels(device_name=subtask.device)
+            if len(active) >= dev.hardware_concurrency:
+                return True
+        return False
+
     def pre_process_measure(self, task: Task):
         """
         Perform checks on a measurement task given the current status of the autocontrol environment.
@@ -555,7 +573,7 @@ class autocontrol:
         # a measurement on a device and channel while there is a measurement still going on. It is also important for
         # transfer tasks to passive devices, which will not report on their channel activity or device status due to the
         # task.
-        if execute_task and self.active_tasks.find_interference(task):
+        if execute_task and self._has_interference(task):
             execute_task = False
             # TODO: Extract more information on failures
             task.md['submission_response'] = 'Waiting for ongoing task at device or channel to finish.'
