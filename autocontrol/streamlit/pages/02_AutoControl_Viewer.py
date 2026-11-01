@@ -348,13 +348,13 @@ co_conf_history = co_conf | {"status": None}
 
 st.text('Queued Jobs:')
 st.dataframe(priority_queue, column_order=co_list, column_config=co_conf_priority,
-             use_container_width=True, hide_index=True)
+             width='stretch', hide_index=True)
 st.text('Active Jobs:')
 st.dataframe(active_queue, column_order=co_list, column_config=co_conf_activity,
-             use_container_width=True, hide_index=True)
+             width='stretch', hide_index=True)
 st.text('Finished Jobs (limited to the last 50):')
 st.dataframe(history_queue, column_order=co_list, column_config=co_conf_history,
-             use_container_width=True, hide_index=True)
+             width='stretch', hide_index=True)
 
 if st.session_state.poll_counter is None or st.session_state.poll_counter != count:
     st.session_state.poll_counter = count
